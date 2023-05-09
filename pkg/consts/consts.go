@@ -22,4 +22,6 @@ const (
 
 	RouteShardLabel         = "router"
 	DefaultIngressClassName = "private"
+
+	EnableWebsocketsLabel = "enableWebsockets"
 )
