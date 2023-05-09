@@ -103,6 +103,8 @@ func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.
 		},
 	}
 
+	httpproxy.Spec.IngressClassName = getIngressClass(route)
+
 	if route.Spec.Path != "" {
 		httpproxy.Spec.Routes[0].Conditions = []contourv1.MatchCondition{
 			{Prefix: route.Spec.Path},
@@ -201,6 +203,14 @@ func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.
 	}
 
 	return httpproxy, nil
+}
+
+func getIngressClass(route *routev1.Route) string {
+	ingressClass, ok := route.Labels[consts.RouteShardLabel]
+	if !ok {
+		ingressClass = consts.DefaultIngressClassName
+	}
+	return ingressClass
 }
 
 func getIPWhitelist(route *routev1.Route) []contourv1.IPFilterPolicy {

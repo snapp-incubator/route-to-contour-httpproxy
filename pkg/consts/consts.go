@@ -19,4 +19,7 @@ const (
 
 	RateLimitUnitMinute   = "minute"
 	HAProxyDefaultTimeout = "50s"
+
+	RouteShardLabel         = "router"
+	DefaultIngressClassName = "private"
 )
