@@ -19,21 +19,23 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+
 	routev1 "github.com/openshift/api/route/v1"
 	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 	corev1 "k8s.io/api/core/v1"
+	disoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strconv"
-	"strings"
 )
 
 // RouteReconciler reconciles a Router object
@@ -61,32 +63,38 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return requeueResponse, err
 	}
 
-	found := &contourv1.HTTPProxy{}
-	err = r.Get(ctx, types.NamespacedName{Name: route.Name, Namespace: route.Namespace}, found)
-	if err != nil && !errors.IsNotFound(err) {
-		logger.Error(err, "failed to get httpproxy")
-		return requeueResponse, err
-	}
-
-	httpproxy, err := r.httpproxyForRoute(ctx, route)
+	existingHttpproxy := &contourv1.HTTPProxy{}
+	err = r.Get(ctx, types.NamespacedName{Name: route.Name, Namespace: route.Namespace}, existingHttpproxy)
 	switch {
-	case errors.IsNotFound(err):
-		err = r.Create(ctx, httpproxy)
+	case err == nil:
+		desiredHttpproxy, err := r.httpproxyForRoute(ctx, route)
 		if err != nil {
-			logger.Error(err, "failed to create httpproxy", "httpproxy.Namespace", httpproxy.Namespace, "httpproxy.Name", httpproxy.Name)
-			return requeueResponse, err
+			logger.Error(err, "failed to convert route to desiredHttpproxy")
+			return requeueResponse, nil
+		}
+		if !reflect.DeepEqual(existingHttpproxy.Spec, desiredHttpproxy.Spec) {
+			err = r.Update(ctx, desiredHttpproxy)
+			if err != nil {
+				logger.Error(err, "failed to update desiredHttpproxy", "namespace", desiredHttpproxy.Namespace, "name", desiredHttpproxy.Name)
+				return requeueResponse, err
+			}
 		}
 		return ctrl.Result{}, nil
-	case err == nil:
-		err = r.Update(ctx, httpproxy)
+	case errors.IsNotFound(err):
+		desiredHttpproxy, err := r.httpproxyForRoute(ctx, route)
 		if err != nil {
-			logger.Error(err, "failed to update httpproxy", "httpproxy.Namespace", httpproxy.Namespace, "httpproxy.Name", httpproxy.Name)
+			logger.Error(err, "failed to convert route to desiredHttpproxy")
+			return requeueResponse, nil
+		}
+		err = r.Create(ctx, desiredHttpproxy)
+		if err != nil {
+			logger.Error(err, "failed to create desiredHttpproxy", "namespace", desiredHttpproxy.Namespace, "name", desiredHttpproxy.Name)
 			return requeueResponse, err
 		}
 		return ctrl.Result{}, nil
 	default:
-		logger.Error(err, "Error converting route to httpproxy")
-		return requeueResponse, nil
+		logger.Error(err, "failed to get desiredHttpproxy")
+		return requeueResponse, err
 	}
 }
 
@@ -104,12 +112,6 @@ func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.
 	}
 
 	httpproxy.Spec.IngressClassName = getIngressClass(route)
-
-	if route.Spec.Path != "" {
-		httpproxy.Spec.Routes[0].Conditions = []contourv1.MatchCondition{
-			{Prefix: route.Spec.Path},
-		}
-	}
 
 	if route.Spec.TLS != nil {
 		switch route.Spec.TLS.Termination {
@@ -166,37 +168,45 @@ func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.
 	if err != nil {
 		return nil, err
 	}
-	port, err := r.getTargetPort(ctx, route)
+	ports, err := r.getTargetPorts(ctx, route)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get route target port, %v", err)
 	}
 
-	httpproxy.Spec.Routes = []contourv1.Route{
-		{
-			Services: []contourv1.Service{
-				{
-					Name:   route.Spec.To.Name,
-					Port:   port,
-					Weight: int64(pointer.Int32Deref(route.Spec.To.Weight, 1)),
+	for _, port := range ports {
+		httpproxy.Spec.Routes = []contourv1.Route{
+			{
+				Services: []contourv1.Service{
+					{
+						Name:   route.Spec.To.Name,
+						Port:   port,
+						Weight: int64(pointer.Int32Deref(route.Spec.To.Weight, 1)),
+					},
 				},
+				LoadBalancerPolicy: loadBalancerPolicy,
+				TimeoutPolicy: &contourv1.TimeoutPolicy{
+					Response: getTimeout(route),
+				},
+				EnableWebsockets: shouldEnableWebsockets(route),
 			},
-			LoadBalancerPolicy: loadBalancerPolicy,
-			TimeoutPolicy: &contourv1.TimeoutPolicy{
-				Response: getTimeout(route),
-			},
-			EnableWebsockets: shouldEnableWebsockets(route),
-		},
-	}
-
-	if route.Spec.TLS != nil {
-		if route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
-			httpproxy.Spec.Routes[0].PermitInsecure = true
 		}
-	}
 
-	ipWhitelist := getIPWhitelist(route)
-	if len(ipWhitelist) > 0 {
-		httpproxy.Spec.Routes[0].IPAllowFilterPolicy = ipWhitelist
+		if route.Spec.Path != "" {
+			httpproxy.Spec.Routes[0].Conditions = []contourv1.MatchCondition{
+				{Prefix: route.Spec.Path},
+			}
+		}
+
+		if route.Spec.TLS != nil {
+			if route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
+				httpproxy.Spec.Routes[0].PermitInsecure = true
+			}
+		}
+
+		ipWhitelist := getIPWhitelist(route)
+		if len(ipWhitelist) > 0 {
+			httpproxy.Spec.Routes[0].IPAllowFilterPolicy = ipWhitelist
+		}
 	}
 
 	if err := ctrl.SetControllerReference(route, httpproxy, r.Scheme); err != nil {
@@ -242,23 +252,35 @@ func getTimeout(route *routev1.Route) string {
 	return timeout
 }
 
-func (r *RouteReconciler) getTargetPort(ctx context.Context, route *routev1.Route) (int, error) {
-	targetPort := route.Spec.Port.TargetPort
-	if targetPort.Type == intstr.Int {
-		return targetPort.IntValue(), nil
+func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Route) ([]int, error) {
+	var ports []int
+
+	targetPortName := ""
+	targetPort := 0
+	if route.Spec.Port != nil {
+		targetPortName = route.Spec.Port.TargetPort.String()
+		targetPort = route.Spec.Port.TargetPort.IntValue()
 	}
 
-	// targetPort is a port name, extract the port number from the corresponding service
-	targetSvc := corev1.Service{}
-	if err := r.Get(ctx, types.NamespacedName{}, &targetSvc); err != nil {
-		return 0, err
+	endpointSliceList := disoveryv1.EndpointSliceList{}
+	err := r.List(ctx, &endpointSliceList, client.MatchingLabels{
+		disoveryv1.LabelServiceName: route.Spec.To.Name,
+	})
+	if err != nil {
+		return ports, err
 	}
-	for _, port := range targetSvc.Spec.Ports {
-		if port.Name == targetPort.String() {
-			return int(port.Port), nil
+
+	for _, endpointSlice := range endpointSliceList.Items {
+		for _, port := range endpointSlice.Ports {
+			if (*port.Name == targetPortName) || (*port.Port == int32(targetPort)) {
+				ports = []int{int(*port.Port)}
+				return ports, nil
+			}
+			ports = append(ports, int(*port.Port))
 		}
 	}
-	return 0, fmt.Errorf("invalid port name specified on service")
+
+	return ports, nil
 }
 
 func getLoadBalancerPolicy(route *routev1.Route) (*contourv1.LoadBalancerPolicy, error) {
