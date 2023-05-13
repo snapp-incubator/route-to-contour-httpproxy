@@ -33,7 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/router"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -96,10 +96,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.RouteReconciler{
+	if err = (&router.RouteReconciler{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		RouterToContourRatio: RouterToContourRatio,
+		Route:                &routev1.Route{},
+		Httpproxy:            &contourv1.HTTPProxy{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Router")
 		os.Exit(1)

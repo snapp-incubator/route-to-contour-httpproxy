@@ -14,12 +14,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package router
 
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
+	"github.com/opdev/subreconciler"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"strings"
 
@@ -34,7 +38,6 @@ import (
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // RouteReconciler reconciles a Router object
@@ -42,6 +45,10 @@ type RouteReconciler struct {
 	client.Client
 	Scheme               *runtime.Scheme
 	RouterToContourRatio int
+	req                  *reconcile.Request
+	logger               logr.Logger
+	Route                *routev1.Route
+	Httpproxy            *contourv1.HTTPProxy
 }
 
 //+kubebuilder:rbac:groups=router.openshift.io,resources=routers,verbs=get;list;watch;create;update;patch;delete
@@ -49,90 +56,114 @@ type RouteReconciler struct {
 //+kubebuilder:rbac:groups=router.openshift.io,resources=routers/finalizers,verbs=update
 
 func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+	r.logger = log.FromContext(ctx)
+	r.req = &req
 
-	requeueResponse := ctrl.Result{RequeueAfter: consts.DefaultRequeueTime}
-
-	route := &routev1.Route{}
-	err := r.Get(ctx, req.NamespacedName, route)
-	if errors.IsNotFound(err) {
-		return ctrl.Result{}, nil
-	} else if err != nil {
-		logger.Error(err, "failed to get route")
-		return requeueResponse, err
+	subrecs := []subreconciler.Fn{
+		r.findRoute,
+		r.ensureHttpproxy,
 	}
 
-	existingHttpproxy := &contourv1.HTTPProxy{}
-	err = r.Get(ctx, types.NamespacedName{Name: route.Name, Namespace: route.Namespace}, existingHttpproxy)
-	switch {
+	for _, subrec := range subrecs {
+		result, err := subrec(ctx)
+		if subreconciler.ShouldHaltOrRequeue(result, err) {
+			return subreconciler.Evaluate(result, err)
+		}
+	}
+
+	return subreconciler.Evaluate(subreconciler.DoNotRequeue())
+}
+
+func (r *RouteReconciler) findRoute(ctx context.Context) (*ctrl.Result, error) {
+	if err := r.Get(ctx, r.req.NamespacedName, r.Route); err != nil {
+		r.logger.Error(err, "failed to get route")
+		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+	}
+
+	return subreconciler.ContinueReconciling()
+}
+
+func (r *RouteReconciler) ensureHttpproxy(ctx context.Context) (*ctrl.Result, error) {
+	switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.Route.Name}, r.Httpproxy); {
 	case err == nil:
-		desiredHttpproxy, err := r.httpproxyForRoute(ctx, route)
-		if err != nil {
-			logger.Error(err, "failed to convert route to desiredHttpproxy")
-			return requeueResponse, nil
-		}
-		if !reflect.DeepEqual(existingHttpproxy.Spec, desiredHttpproxy.Spec) {
-			err = r.Update(ctx, desiredHttpproxy)
-			if err != nil {
-				logger.Error(err, "failed to update desiredHttpproxy", "namespace", desiredHttpproxy.Namespace, "name", desiredHttpproxy.Name)
-				return requeueResponse, err
-			}
-		}
-		return ctrl.Result{}, nil
+		return r.updateHttpproxy(ctx)
 	case errors.IsNotFound(err):
-		desiredHttpproxy, err := r.httpproxyForRoute(ctx, route)
-		if err != nil {
-			logger.Error(err, "failed to convert route to desiredHttpproxy")
-			return requeueResponse, nil
-		}
-		err = r.Create(ctx, desiredHttpproxy)
-		if err != nil {
-			logger.Error(err, "failed to create desiredHttpproxy", "namespace", desiredHttpproxy.Namespace, "name", desiredHttpproxy.Name)
-			return requeueResponse, err
-		}
-		return ctrl.Result{}, nil
+		return r.createHttpproxy(ctx)
 	default:
-		logger.Error(err, "failed to get desiredHttpproxy")
-		return requeueResponse, err
+		r.logger.Error(err, "failed to get desired")
+		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
 	}
 }
 
-func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.Route) (*contourv1.HTTPProxy, error) {
+func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, error) {
+	desired, err := r.assembleHttpproxy(ctx)
+	if err != nil {
+		r.logger.Error(err, "failed to convert route to desired")
+		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+	}
+
+	if !reflect.DeepEqual(r.Httpproxy.Spec, desired.Spec) {
+		err = r.Update(ctx, desired)
+		if err != nil {
+			r.logger.Error(err, "failed to update httpproxy", "namespace", desired.Namespace, "name", desired.Name)
+			return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+		}
+	}
+
+	return subreconciler.ContinueReconciling()
+}
+
+func (r *RouteReconciler) createHttpproxy(ctx context.Context) (*ctrl.Result, error) {
+	desired, err := r.assembleHttpproxy(ctx)
+	if err != nil {
+		r.logger.Error(err, "failed to convert route to desired")
+		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+	}
+
+	if err = r.Create(ctx, desired); err != nil {
+		r.logger.Error(err, "failed to create httpproxy", "namespace", desired.Namespace, "name", desired.Name)
+		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+	}
+
+	return subreconciler.ContinueReconciling()
+}
+
+func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTTPProxy, error) {
 	httpproxy := &contourv1.HTTPProxy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      route.Name,
-			Namespace: route.Namespace,
+			Name:      r.Route.Name,
+			Namespace: r.Route.Namespace,
 		},
 		Spec: contourv1.HTTPProxySpec{
 			VirtualHost: &contourv1.VirtualHost{
-				Fqdn: route.Spec.Host,
+				Fqdn: r.Route.Spec.Host,
 			},
 		},
 	}
 
-	httpproxy.Spec.IngressClassName = getIngressClass(route)
+	httpproxy.Spec.IngressClassName = getIngressClass(r.Route)
 
-	if route.Spec.TLS != nil {
-		switch route.Spec.TLS.Termination {
+	if r.Route.Spec.TLS != nil {
+		switch r.Route.Spec.TLS.Termination {
 		case "passthrough":
 			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
 				Passthrough: true,
 			}
 		case "edge":
 			var secretName string
-			if route.Spec.TLS.Key == "" {
+			if r.Route.Spec.TLS.Key == "" {
 				// use default secret
 				secretName = fmt.Sprintf("%s/%s", consts.TLSSecretNS, consts.TLSSecretName)
 			} else {
 				// create secret from route
 				secret := corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      fmt.Sprintf("%s-tls", route.Name),
-						Namespace: route.Namespace,
+						Name:      fmt.Sprintf("%s-tls", r.Route.Name),
+						Namespace: r.Route.Namespace,
 					},
 					StringData: map[string]string{
-						"tls.key": route.Spec.TLS.Key,
-						"tls.crt": route.Spec.TLS.Certificate,
+						"tls.key": r.Route.Spec.TLS.Key,
+						"tls.crt": r.Route.Spec.TLS.Certificate,
 					},
 					Type: corev1.SecretTypeTLS,
 				}
@@ -150,7 +181,7 @@ func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.
 		}
 	}
 
-	rateLimitEnabled, rateLimit := getRateLimit(route)
+	rateLimitEnabled, rateLimit := getRateLimit(r.Route)
 	if rateLimitEnabled {
 		// haproxy router uses 10s window size while we have 1s, 1m, 1h windows in contour
 		contourRate := uint32(rateLimit * r.RouterToContourRatio * 6)
@@ -163,11 +194,11 @@ func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.
 		}
 	}
 
-	loadBalancerPolicy, err := getLoadBalancerPolicy(route)
+	loadBalancerPolicy, err := getLoadBalancerPolicy(r.Route)
 	if err != nil {
 		return nil, err
 	}
-	ports, err := r.getTargetPorts(ctx, route)
+	ports, err := r.getTargetPorts(ctx, r.Route)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get route target port, %v", err)
 	}
@@ -177,38 +208,38 @@ func (r *RouteReconciler) httpproxyForRoute(ctx context.Context, route *routev1.
 			{
 				Services: []contourv1.Service{
 					{
-						Name:   route.Spec.To.Name,
+						Name:   r.Route.Spec.To.Name,
 						Port:   port,
-						Weight: int64(pointer.Int32Deref(route.Spec.To.Weight, 1)),
+						Weight: int64(pointer.Int32Deref(r.Route.Spec.To.Weight, 1)),
 					},
 				},
 				LoadBalancerPolicy: loadBalancerPolicy,
 				TimeoutPolicy: &contourv1.TimeoutPolicy{
-					Response: getTimeout(route),
+					Response: getTimeout(r.Route),
 				},
-				EnableWebsockets: shouldEnableWebsockets(route),
+				EnableWebsockets: shouldEnableWebsockets(r.Route),
 			},
 		}
 
-		if route.Spec.Path != "" {
+		if r.Route.Spec.Path != "" {
 			httpproxy.Spec.Routes[0].Conditions = []contourv1.MatchCondition{
-				{Prefix: route.Spec.Path},
+				{Prefix: r.Route.Spec.Path},
 			}
 		}
 
-		if route.Spec.TLS != nil {
-			if route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
+		if r.Route.Spec.TLS != nil {
+			if r.Route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
 				httpproxy.Spec.Routes[0].PermitInsecure = true
 			}
 		}
 
-		ipWhitelist := getIPWhitelist(route)
+		ipWhitelist := getIPWhitelist(r.Route)
 		if len(ipWhitelist) > 0 {
 			httpproxy.Spec.Routes[0].IPAllowFilterPolicy = ipWhitelist
 		}
 	}
 
-	if err := ctrl.SetControllerReference(route, httpproxy, r.Scheme); err != nil {
+	if err := ctrl.SetControllerReference(r.Route, httpproxy, r.Scheme); err != nil {
 		return nil, err
 	}
 
@@ -321,11 +352,4 @@ func getRateLimit(route *routev1.Route) (bool, int) {
 	}
 
 	return rateLimit, rateLimitHttpRate
-}
-
-func (r *RouteReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&routev1.Route{}).
-		Owns(&contourv1.HTTPProxy{}).
-		Complete(r)
 }

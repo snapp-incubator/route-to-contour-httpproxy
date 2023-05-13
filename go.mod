@@ -5,6 +5,7 @@ go 1.19
 require (
 	github.com/onsi/ginkgo/v2 v2.9.4
 	github.com/onsi/gomega v1.27.6
+	github.com/opdev/subreconciler v0.0.0-20230302151718-c4c8b5ec17c5
 	github.com/openshift/api v3.9.0+incompatible
 	github.com/projectcontour/contour v1.25.0
 	k8s.io/api v0.26.3
