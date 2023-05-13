@@ -27,7 +27,6 @@ import (
 	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 	corev1 "k8s.io/api/core/v1"
-	disoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -262,22 +261,17 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 		targetPort = route.Spec.Port.TargetPort.IntValue()
 	}
 
-	endpointSliceList := disoveryv1.EndpointSliceList{}
-	err := r.List(ctx, &endpointSliceList, client.MatchingLabels{
-		disoveryv1.LabelServiceName: route.Spec.To.Name,
-	})
-	if err != nil {
+	svc := corev1.Service{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: route.Namespace, Name: route.Spec.To.Name}, &svc); err != nil {
 		return ports, err
 	}
 
-	for _, endpointSlice := range endpointSliceList.Items {
-		for _, port := range endpointSlice.Ports {
-			if (*port.Name == targetPortName) || (*port.Port == int32(targetPort)) {
-				ports = []int{int(*port.Port)}
-				return ports, nil
-			}
-			ports = append(ports, int(*port.Port))
+	for _, port := range svc.Spec.Ports {
+		if port.Name == targetPortName || port.Port == int32(targetPort) {
+			ports = []int{int(port.Port)}
+			return ports, nil
 		}
+		ports = append(ports, int(port.Port))
 	}
 
 	return ports, nil
