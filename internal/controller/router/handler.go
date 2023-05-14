@@ -44,9 +44,11 @@ import (
 type RouteReconciler struct {
 	client.Client
 	Scheme               *runtime.Scheme
-	RouterToContourRatio int
 	req                  *reconcile.Request
 	logger               logr.Logger
+	tlsSecretName        string
+	globalTlsSecretName  string
+	RouterToContourRatio int
 	Route                *routev1.Route
 	Httpproxy            *contourv1.HTTPProxy
 }
@@ -61,6 +63,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	subrecs := []subreconciler.Fn{
 		r.findRoute,
+		r.initVars,
 		r.ensureHttpproxy,
 	}
 
@@ -79,6 +82,13 @@ func (r *RouteReconciler) findRoute(ctx context.Context) (*ctrl.Result, error) {
 		r.logger.Error(err, "failed to get route")
 		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
 	}
+
+	return subreconciler.ContinueReconciling()
+}
+
+func (r *RouteReconciler) initVars(ctx context.Context) (*ctrl.Result, error) {
+	r.tlsSecretName = fmt.Sprintf("%s-tls", r.Route.Name)
+	r.globalTlsSecretName = fmt.Sprintf("%s/%s", consts.TLSSecretNS, consts.TLSSecretName)
 
 	return subreconciler.ContinueReconciling()
 }
@@ -153,24 +163,14 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 			var secretName string
 			if r.Route.Spec.TLS.Key == "" {
 				// use default secret
-				secretName = fmt.Sprintf("%s/%s", consts.TLSSecretNS, consts.TLSSecretName)
+				secretName = r.globalTlsSecretName
 			} else {
 				// create secret from route
-				secret := corev1.Secret{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      fmt.Sprintf("%s-tls", r.Route.Name),
-						Namespace: r.Route.Namespace,
-					},
-					StringData: map[string]string{
-						"tls.key": r.Route.Spec.TLS.Key,
-						"tls.crt": r.Route.Spec.TLS.Certificate,
-					},
-					Type: corev1.SecretTypeTLS,
+				err := r.ensureTLSSecret(ctx)
+				if err != nil {
+					return nil, err
 				}
-				if err := r.Create(ctx, &secret); err != nil {
-					return nil, fmt.Errorf("failed to create secret for tls, %v", err)
-				}
-				secretName = secret.Name
+				secretName = r.tlsSecretName
 			}
 			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{SecretName: secretName}
 		case "reencrypt":
@@ -306,6 +306,41 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 	}
 
 	return ports, nil
+}
+
+func (r *RouteReconciler) ensureTLSSecret(ctx context.Context) error {
+	existingSecret := corev1.Secret{}
+
+	switch err := r.Get(ctx, types.NamespacedName{
+		Namespace: r.Route.Namespace,
+		Name:      r.tlsSecretName,
+	}, &existingSecret); {
+	case err == nil:
+		secret := r.assembleTLSSecret()
+		if !reflect.DeepEqual(secret.Data, existingSecret.Data) {
+			return r.Update(ctx, secret)
+		}
+		return nil
+	case errors.IsNotFound(err):
+		secret := r.assembleTLSSecret()
+		return r.Create(ctx, secret)
+	default:
+		return err
+	}
+}
+
+func (r *RouteReconciler) assembleTLSSecret() *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: r.Route.Namespace,
+			Name:      r.tlsSecretName,
+		},
+		StringData: map[string]string{
+			"tls.key": r.Route.Spec.TLS.Key,
+			"tls.crt": r.Route.Spec.TLS.Certificate,
+		},
+		Type: corev1.SecretTypeTLS,
+	}
 }
 
 func getLoadBalancerPolicy(route *routev1.Route) (*contourv1.LoadBalancerPolicy, error) {
