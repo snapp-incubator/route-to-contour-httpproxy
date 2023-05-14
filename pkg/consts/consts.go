@@ -18,10 +18,17 @@ const (
 	TLSSecretName = "letsencrypt"
 
 	RateLimitUnitMinute   = "minute"
-	HAProxyDefaultTimeout = "50s"
+	HAProxyDefaultTimeout = "5s"
 
 	RouteShardLabel         = "router"
 	DefaultIngressClassName = "private"
 
 	EnableWebsocketsLabel = "enableWebsockets"
+
+	StrategyCookie               = "Cookie"
+	StrategyRandom               = "Random"
+	StrategyRoundRobin           = "RoundRobin"
+	StrategyWeightedLeastRequest = "WeightedLeastRequest"
+	StrategyRequestHash          = "RequestHash"
+	StrategyDefault              = StrategyWeightedLeastRequest
 )

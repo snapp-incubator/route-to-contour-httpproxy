@@ -347,22 +347,22 @@ func getLoadBalancerPolicy(route *routev1.Route) (*contourv1.LoadBalancerPolicy,
 	lbPolicy := contourv1.LoadBalancerPolicy{}
 	disableCookies := route.Annotations[consts.AnnotDisableCookies]
 	if disableCookies != "true" && disableCookies != "TRUE" {
-		lbPolicy.Strategy = "Cookie"
+		lbPolicy.Strategy = consts.StrategyCookie
 	} else {
 		policy, ok := route.Annotations[consts.AnnotBalance]
 		if !ok {
-			lbPolicy.Strategy = "Random"
+			lbPolicy.Strategy = consts.StrategyDefault
 		} else {
 			switch policy {
 			case "roundrobin":
-				lbPolicy.Strategy = "RoundRobin"
+				lbPolicy.Strategy = consts.StrategyRoundRobin
 			case "leastconn":
-				lbPolicy.Strategy = "WeightedLeastRequest"
+				lbPolicy.Strategy = consts.StrategyWeightedLeastRequest
 			case "source":
-				lbPolicy.Strategy = "RequestHash"
+				lbPolicy.Strategy = consts.StrategyRequestHash
 				lbPolicy.RequestHashPolicies = []contourv1.RequestHashPolicy{{HashSourceIP: true}}
 			case "random":
-				lbPolicy.Strategy = "Random"
+				lbPolicy.Strategy = consts.StrategyRandom
 			default:
 				return nil, fmt.Errorf("invalid loadbalancer policy specified on route")
 			}
