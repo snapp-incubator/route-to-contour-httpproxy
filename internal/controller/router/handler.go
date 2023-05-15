@@ -154,25 +154,21 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 	httpproxy.Spec.IngressClassName = getIngressClass(r.Route)
 
 	if r.Route.Spec.TLS != nil {
+		httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
+			EnableFallbackCertificate: true,
+		}
 		switch r.Route.Spec.TLS.Termination {
 		case "passthrough":
-			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
-				Passthrough: true,
-			}
+			httpproxy.Spec.VirtualHost.TLS.Passthrough = true
 		case "edge":
-			var secretName string
-			if r.Route.Spec.TLS.Key == "" {
-				// use default secret
-				secretName = r.globalTlsSecretName
-			} else {
+			if r.Route.Spec.TLS.Key != "" {
 				// create secret from route
 				err := r.ensureTLSSecret(ctx)
 				if err != nil {
 					return nil, err
 				}
-				secretName = r.tlsSecretName
+				httpproxy.Spec.VirtualHost.TLS.SecretName = r.tlsSecretName
 			}
-			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{SecretName: secretName}
 		case "reencrypt":
 			// todo: find a solution
 			return nil, fmt.Errorf("reencrypt termination is not supported")
