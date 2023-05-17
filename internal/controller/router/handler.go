@@ -170,8 +170,9 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 				httpproxy.Spec.VirtualHost.TLS.SecretName = r.tlsSecretName
 			}
 		case "reencrypt":
-			// todo: find a solution
-			return nil, fmt.Errorf("reencrypt termination is not supported")
+			r.logger.WithValues(
+				"namespace", r.Route.Namespace, "name", r.Route.Name,
+			).Info("reencrypt termination should be enabld by annotating the service")
 		default:
 			return nil, fmt.Errorf("invalid termination mode specified on route")
 		}
