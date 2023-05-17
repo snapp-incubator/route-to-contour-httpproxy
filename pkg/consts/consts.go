@@ -23,8 +23,6 @@ const (
 	RouteShardLabel         = "router"
 	DefaultIngressClassName = "private"
 
-	EnableWebsocketsLabel = "enableWebsockets"
-
 	StrategyCookie               = "Cookie"
 	StrategyRandom               = "Random"
 	StrategyRoundRobin           = "RoundRobin"

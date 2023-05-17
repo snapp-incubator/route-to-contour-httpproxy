@@ -214,7 +214,7 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 				TimeoutPolicy: &contourv1.TimeoutPolicy{
 					Response: getTimeout(r.Route),
 				},
-				EnableWebsockets: shouldEnableWebsockets(r.Route),
+				EnableWebsockets: true,
 			},
 		}
 
@@ -241,10 +241,6 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 	}
 
 	return httpproxy, nil
-}
-
-func shouldEnableWebsockets(route *routev1.Route) bool {
-	return route.Labels[consts.EnableWebsocketsLabel] == "true"
 }
 
 func getIngressClass(route *routev1.Route) string {
