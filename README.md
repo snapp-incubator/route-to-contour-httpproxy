@@ -10,8 +10,6 @@ Currently, the project consists of a single controller which watches `route` and
 The controller tries to create/update an `httpproxy` that matches the corresponding `route` in functionalities, e.g. tls
 termination, port mapping, etc.
 
-The `reencrypt` termination policy is not supported currently.
-
 ## Getting Started
 
 You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for
