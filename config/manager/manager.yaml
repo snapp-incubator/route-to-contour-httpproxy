@@ -70,6 +70,8 @@ spec:
         - /manager
         args:
         - --leader-elect
+        - --router-contour-ratio=3
+        - --region-name=ts-1
         image: controller:latest
         name: manager
         securityContext:

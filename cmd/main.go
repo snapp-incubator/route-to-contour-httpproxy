@@ -55,15 +55,18 @@ func main() {
 		metricsAddr          string
 		enableLeaderElection bool
 		probeAddr            string
-		RouterToContourRatio int
+		routerToContourRatio int
+		regionName           string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.IntVar(&RouterToContourRatio, "router-contour-ratio", 3,
+	flag.IntVar(&routerToContourRatio, "router-contour-ratio", 3,
 		"The ratio of the count of router nodes to the count of contour nodes.")
+	flag.StringVar(&regionName, "region-name", "ts-1",
+		"The name of the region where controller is deployed in.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -99,7 +102,8 @@ func main() {
 	if err = (&router.RouteReconciler{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
-		RouterToContourRatio: RouterToContourRatio,
+		RouterToContourRatio: routerToContourRatio,
+		RegionName:           regionName,
 		Route:                &routev1.Route{},
 		Httpproxy:            &contourv1.HTTPProxy{},
 	}).SetupWithManager(mgr); err != nil {

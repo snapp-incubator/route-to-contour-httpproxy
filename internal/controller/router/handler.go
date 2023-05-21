@@ -46,13 +46,16 @@ import (
 type RouteReconciler struct {
 	client.Client
 	Scheme               *runtime.Scheme
+	RouterToContourRatio int
+	RegionName           string
+	Route                *routev1.Route
+	Httpproxy            *contourv1.HTTPProxy
 	req                  *reconcile.Request
 	logger               logr.Logger
 	tlsSecretName        string
 	globalTlsSecretName  string
-	RouterToContourRatio int
-	Route                *routev1.Route
-	Httpproxy            *contourv1.HTTPProxy
+	sameRoutes           []routev1.Route
+	httpproxyName        string
 }
 
 //+kubebuilder:rbac:groups=router.openshift.io,resources=routers,verbs=get;list;watch;create;update;patch;delete
@@ -66,6 +69,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	subrecs := []subreconciler.Fn{
 		r.findRoute,
 		r.ignorePaused,
+		r.findSameRoutes,
 		r.initVars,
 		r.ensureHttpproxy,
 	}
@@ -80,14 +84,6 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return subreconciler.Evaluate(subreconciler.DoNotRequeue())
 }
 
-func (r *RouteReconciler) ignorePaused(ctx context.Context) (*ctrl.Result, error) {
-	if utils.IsPaused(r.Route) {
-		r.logger.Info("ignoring paused route")
-		return subreconciler.DoNotRequeue()
-	}
-	return subreconciler.ContinueReconciling()
-}
-
 func (r *RouteReconciler) findRoute(ctx context.Context) (*ctrl.Result, error) {
 	if err := r.Get(ctx, r.req.NamespacedName, r.Route); err != nil {
 		r.logger.Error(err, "failed to get route")
@@ -97,21 +93,53 @@ func (r *RouteReconciler) findRoute(ctx context.Context) (*ctrl.Result, error) {
 	return subreconciler.ContinueReconciling()
 }
 
+func (r *RouteReconciler) ignorePaused(ctx context.Context) (*ctrl.Result, error) {
+	if utils.IsPaused(r.Route) {
+		r.logger.Info("ignoring paused route")
+		return subreconciler.DoNotRequeue()
+	}
+	return subreconciler.ContinueReconciling()
+}
+
+// findSameRoutes finds routes with same host and namespace as the route under reconciliation
+func (r *RouteReconciler) findSameRoutes(ctx context.Context) (*ctrl.Result, error) {
+	nsRoutes := routev1.RouteList{}
+	if err := r.List(ctx, &nsRoutes, client.InNamespace(r.Route.Namespace)); err != nil {
+		r.logger.Error(err, "failed to list related routes")
+		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+	}
+
+	sameRoutes := make([]routev1.Route, 0)
+
+	for _, route := range nsRoutes.Items {
+		if route.Spec.Host == r.Route.Spec.Host {
+			sameRoutes = append(sameRoutes, route)
+		}
+	}
+
+	r.sameRoutes = sameRoutes
+
+	return subreconciler.ContinueReconciling()
+}
+
 func (r *RouteReconciler) initVars(ctx context.Context) (*ctrl.Result, error) {
 	r.tlsSecretName = fmt.Sprintf("%s-tls", r.Route.Name)
 	r.globalTlsSecretName = fmt.Sprintf("%s/%s", consts.TLSSecretNS, consts.TLSSecretName)
+
+	commonRouteSuffix := fmt.Sprintf(".okd4.%s.staging-snappcloud.io", r.RegionName)
+	r.httpproxyName = strings.ReplaceAll(strings.TrimSuffix(r.Route.Spec.Host, commonRouteSuffix), ".", "-")
 
 	return subreconciler.ContinueReconciling()
 }
 
 func (r *RouteReconciler) ensureHttpproxy(ctx context.Context) (*ctrl.Result, error) {
-	switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.Route.Name}, r.Httpproxy); {
+	switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.httpproxyName}, r.Httpproxy); {
 	case err == nil:
 		return r.updateHttpproxy(ctx)
 	case errors.IsNotFound(err):
 		return r.createHttpproxy(ctx)
 	default:
-		r.logger.Error(err, "failed to get desired")
+		r.logger.Error(err, "failed to get desired httpproxy")
 		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
 	}
 }
@@ -153,7 +181,7 @@ func (r *RouteReconciler) createHttpproxy(ctx context.Context) (*ctrl.Result, er
 func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTTPProxy, error) {
 	httpproxy := &contourv1.HTTPProxy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      r.Route.Name,
+			Name:      r.httpproxyName,
 			Namespace: r.Route.Namespace,
 		},
 		Spec: contourv1.HTTPProxySpec{
@@ -208,44 +236,47 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 	if err != nil {
 		return nil, err
 	}
-	ports, err := r.getTargetPorts(ctx, r.Route)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get route target port, %v", err)
-	}
 
-	for _, port := range ports {
-		httpproxy.Spec.Routes = []contourv1.Route{
-			{
+	for _, route := range r.sameRoutes {
+		ports, err := r.getTargetPorts(ctx, &route)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get route target port, %v", err)
+		}
+
+		for _, port := range ports {
+			httpproxyRoute := contourv1.Route{
 				Services: []contourv1.Service{
 					{
-						Name:   r.Route.Spec.To.Name,
+						Name:   route.Spec.To.Name,
 						Port:   port,
-						Weight: int64(pointer.Int32Deref(r.Route.Spec.To.Weight, 1)),
+						Weight: int64(pointer.Int32Deref(route.Spec.To.Weight, 1)),
 					},
 				},
 				LoadBalancerPolicy: loadBalancerPolicy,
 				TimeoutPolicy: &contourv1.TimeoutPolicy{
-					Response: getTimeout(r.Route),
+					Response: getTimeout(&route),
 				},
 				EnableWebsockets: true,
-			},
-		}
-
-		if r.Route.Spec.Path != "" {
-			httpproxy.Spec.Routes[0].Conditions = []contourv1.MatchCondition{
-				{Prefix: r.Route.Spec.Path},
 			}
-		}
 
-		if r.Route.Spec.TLS != nil {
-			if r.Route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
-				httpproxy.Spec.Routes[0].PermitInsecure = true
+			if route.Spec.Path != "" {
+				httpproxyRoute.Conditions = []contourv1.MatchCondition{
+					{Prefix: route.Spec.Path},
+				}
 			}
-		}
 
-		ipWhitelist := getIPWhitelist(r.Route)
-		if len(ipWhitelist) > 0 {
-			httpproxy.Spec.Routes[0].IPAllowFilterPolicy = ipWhitelist
+			if route.Spec.TLS != nil {
+				if route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
+					httpproxyRoute.PermitInsecure = true
+				}
+			}
+
+			ipWhitelist := getIPWhitelist(&route)
+			if len(ipWhitelist) > 0 {
+				httpproxyRoute.IPAllowFilterPolicy = ipWhitelist
+			}
+
+			httpproxy.Spec.Routes = append(httpproxy.Spec.Routes, httpproxyRoute)
 		}
 	}
 

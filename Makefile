@@ -1,8 +1,10 @@
-
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.26.1
+
+REGION_NAME ?= ts-1
+ROUTER_CONTOUR_RATIO ?= 3
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -66,7 +68,7 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+	go run ./cmd/main.go --router-contour-ratio=$(ROUTER_CONTOUR_RATIO) --region-name=$(REGION_NAME)
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
