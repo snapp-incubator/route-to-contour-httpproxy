@@ -19,17 +19,14 @@ package router
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
-	"github.com/opdev/subreconciler"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"strings"
 
+	"github.com/go-logr/logr"
+	"github.com/opdev/subreconciler"
 	routev1 "github.com/openshift/api/route/v1"
 	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
-	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,6 +35,11 @@ import (
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/utils"
 )
 
 // RouteReconciler reconciles a Router object
@@ -63,6 +65,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	subrecs := []subreconciler.Fn{
 		r.findRoute,
+		r.ignorePaused,
 		r.initVars,
 		r.ensureHttpproxy,
 	}
@@ -75,6 +78,14 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	return subreconciler.Evaluate(subreconciler.DoNotRequeue())
+}
+
+func (r *RouteReconciler) ignorePaused(ctx context.Context) (*ctrl.Result, error) {
+	if utils.IsPaused(r.Route) {
+		r.logger.Info("ignoring paused route")
+		return subreconciler.DoNotRequeue()
+	}
+	return subreconciler.ContinueReconciling()
 }
 
 func (r *RouteReconciler) findRoute(ctx context.Context) (*ctrl.Result, error) {
