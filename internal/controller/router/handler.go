@@ -113,7 +113,8 @@ func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, er
 	}
 
 	if !reflect.DeepEqual(r.Httpproxy.Spec, desired.Spec) {
-		err = r.Update(ctx, desired)
+		r.Httpproxy.Spec = desired.Spec
+		err = r.Update(ctx, r.Httpproxy)
 		if err != nil {
 			r.logger.Error(err, "failed to update httpproxy", "namespace", desired.Namespace, "name", desired.Name)
 			return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
@@ -154,25 +155,26 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 	httpproxy.Spec.IngressClassName = getIngressClass(r.Route)
 
 	if r.Route.Spec.TLS != nil {
-		httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
-			EnableFallbackCertificate: true,
-		}
 		switch r.Route.Spec.TLS.Termination {
 		case "passthrough":
-			httpproxy.Spec.VirtualHost.TLS.Passthrough = true
-		case "edge":
+			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
+				Passthrough: true,
+			}
+		case "edge", "reencrypt":
+			var secretName string
 			if r.Route.Spec.TLS.Key != "" {
-				// create secret from route
 				err := r.ensureTLSSecret(ctx)
 				if err != nil {
 					return nil, err
 				}
-				httpproxy.Spec.VirtualHost.TLS.SecretName = r.tlsSecretName
+				secretName = r.tlsSecretName
+			} else {
+				secretName = r.globalTlsSecretName
 			}
-		case "reencrypt":
-			r.logger.WithValues(
-				"namespace", r.Route.Namespace, "name", r.Route.Name,
-			).Info("reencrypt termination should be enabld by annotating the service")
+			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
+				SecretName:                secretName,
+				EnableFallbackCertificate: true,
+			}
 		default:
 			return nil, fmt.Errorf("invalid termination mode specified on route")
 		}
@@ -311,7 +313,8 @@ func (r *RouteReconciler) ensureTLSSecret(ctx context.Context) error {
 	case err == nil:
 		secret := r.assembleTLSSecret()
 		if !reflect.DeepEqual(secret.Data, existingSecret.Data) {
-			return r.Update(ctx, secret)
+			existingSecret.Data = secret.Data
+			return r.Update(ctx, &existingSecret)
 		}
 		return nil
 	case errors.IsNotFound(err):
