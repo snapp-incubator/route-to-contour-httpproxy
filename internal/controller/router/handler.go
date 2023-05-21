@@ -108,7 +108,7 @@ func (r *RouteReconciler) ensureHttpproxy(ctx context.Context) (*ctrl.Result, er
 func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, error) {
 	desired, err := r.assembleHttpproxy(ctx)
 	if err != nil {
-		r.logger.Error(err, "failed to convert route to desired")
+		r.logger.Error(err, "failed to convert route to httpproxy")
 		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
 	}
 
@@ -116,7 +116,7 @@ func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, er
 		r.Httpproxy.Spec = desired.Spec
 		err = r.Update(ctx, r.Httpproxy)
 		if err != nil {
-			r.logger.Error(err, "failed to update httpproxy", "namespace", desired.Namespace, "name", desired.Name)
+			r.logger.Error(err, "failed to update httpproxy")
 			return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
 		}
 	}
@@ -127,12 +127,12 @@ func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, er
 func (r *RouteReconciler) createHttpproxy(ctx context.Context) (*ctrl.Result, error) {
 	desired, err := r.assembleHttpproxy(ctx)
 	if err != nil {
-		r.logger.Error(err, "failed to convert route to desired")
+		r.logger.Error(err, "failed to convert route to httpproxy")
 		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
 	}
 
 	if err = r.Create(ctx, desired); err != nil {
-		r.logger.Error(err, "failed to create httpproxy", "namespace", desired.Namespace, "name", desired.Name)
+		r.logger.Error(err, "failed to create httpproxy")
 		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
 	}
 
