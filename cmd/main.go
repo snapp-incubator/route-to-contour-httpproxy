@@ -57,6 +57,7 @@ func main() {
 		probeAddr            string
 		routerToContourRatio int
 		regionName           string
+		baseDomain           string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -67,6 +68,8 @@ func main() {
 		"The ratio of the count of router nodes to the count of contour nodes.")
 	flag.StringVar(&regionName, "region-name", "ts-1",
 		"The name of the region where controller is deployed in.")
+	flag.StringVar(&baseDomain, "base-domain", "staging-snappcloud.io",
+		"The base-domain for the cluster, e.g. snappcloud.io or staging-snappcloud.io")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -104,6 +107,7 @@ func main() {
 		Scheme:               mgr.GetScheme(),
 		RouterToContourRatio: routerToContourRatio,
 		RegionName:           regionName,
+		BaseDomain:           baseDomain,
 		Route:                &routev1.Route{},
 		Httpproxy:            &contourv1.HTTPProxy{},
 	}).SetupWithManager(mgr); err != nil {

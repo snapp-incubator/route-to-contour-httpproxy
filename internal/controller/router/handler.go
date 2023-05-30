@@ -48,6 +48,7 @@ type RouteReconciler struct {
 	Scheme               *runtime.Scheme
 	RouterToContourRatio int
 	RegionName           string
+	BaseDomain           string
 	Route                *routev1.Route
 	Httpproxy            *contourv1.HTTPProxy
 	req                  *reconcile.Request
@@ -126,7 +127,7 @@ func (r *RouteReconciler) initVars(ctx context.Context) (*ctrl.Result, error) {
 	r.tlsSecretName = fmt.Sprintf("%s-tls", r.Route.Name)
 	r.globalTlsSecretName = fmt.Sprintf("%s/%s", consts.TLSSecretNS, consts.TLSSecretName)
 
-	commonRouteSuffix := fmt.Sprintf(".okd4.%s.staging-snappcloud.io", r.RegionName)
+	commonRouteSuffix := fmt.Sprintf(".okd4.%s.%s", r.RegionName, r.BaseDomain)
 	r.httpproxyName = strings.ReplaceAll(strings.TrimSuffix(r.Route.Spec.Host, commonRouteSuffix), ".", "-")
 
 	return subreconciler.ContinueReconciling()

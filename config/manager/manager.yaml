@@ -72,6 +72,7 @@ spec:
         - --leader-elect
         - --router-contour-ratio=3
         - --region-name=ts-1
+        - --base-domain=staging-snappcloud.io
         image: controller:latest
         name: manager
         securityContext:
