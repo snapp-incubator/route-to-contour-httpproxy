@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: route-to-httpproxy-config
+  namespace: route-to-httpproxy
+data:
+  ROUTER_CONTOUR_RATIO: 1
+  REGION_NAME: ts-1
+  BASE_DOMAIN: staging-snappcloud.io

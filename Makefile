@@ -5,7 +5,7 @@ ENVTEST_K8S_VERSION = 1.26.1
 
 REGION_NAME ?= ts-1
 BASE_DOMAIN ?= staging-snappcloud.io
-ROUTER_CONTOUR_RATIO ?= 3
+ROUTER_CONTOUR_RATIO ?= 1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -69,7 +69,7 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go --router-contour-ratio=$(ROUTER_CONTOUR_RATIO) --region-name=$(REGION_NAME) --base-domain=$(BASE_DOMAIN)
+	go run ./cmd/main.go
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
@@ -115,10 +115,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG} && \
-	sed -i 's/REGION_NAME/$(REGION_NAME)/g' manager.yaml && \
-	sed -i 's/BASE_DOMAIN/$(BASE_DOMAIN)/g' manager.yaml && \
-	sed -i 's/ROUTER_CONTOUR_RATIO/$(ROUTER_CONTOUR_RATIO)/g' manager.yaml
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 .PHONY: undeploy

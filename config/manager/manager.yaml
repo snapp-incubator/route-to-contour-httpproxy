@@ -70,9 +70,9 @@ spec:
         - /manager
         args:
         - --leader-elect
-        - --router-contour-ratio=ROUTER_CONTOUR_RATIO
-        - --region-name=REGION_NAME
-        - --base-domain=BASE_DOMAIN
+        envFrom:
+          - configMapRef:
+              name: route-to-httpproxy-config
         image: controller:latest
         name: manager
         securityContext:

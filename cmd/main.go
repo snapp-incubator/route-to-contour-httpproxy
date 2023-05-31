@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strconv"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -50,26 +51,50 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
+func getIntEnv(name string, defaultValue int) int {
+	strValue := os.Getenv(name)
+	if strValue == "" {
+		return defaultValue
+	}
+
+	value, err := strconv.Atoi(strValue)
+	if err != nil {
+		return defaultValue
+	}
+
+	return value
+}
+
+func getStrEnv(name, defaultValue string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
 func main() {
 	var (
 		metricsAddr          string
 		enableLeaderElection bool
 		probeAddr            string
+		// The ratio of the count of router nodes to the count of contour nodes
 		routerToContourRatio int
-		regionName           string
-		baseDomain           string
+		// The name of the region where controller is deployed in
+		regionName string
+		// The base-domain for the cluster, e.g. snappcloud.io or staging-snappcloud.i
+		baseDomain string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.IntVar(&routerToContourRatio, "router-contour-ratio", 3,
-		"The ratio of the count of router nodes to the count of contour nodes.")
-	flag.StringVar(&regionName, "region-name", "ts-1",
-		"The name of the region where controller is deployed in.")
-	flag.StringVar(&baseDomain, "base-domain", "staging-snappcloud.io",
-		"The base-domain for the cluster, e.g. snappcloud.io or staging-snappcloud.io")
+
+	routerToContourRatio = getIntEnv("ROUTER_CONTOUR_RATIO", 1)
+	regionName = getStrEnv("REGION_NAME", "ts-1")
+	baseDomain = getStrEnv("BASE_DOMAIN", "staging-snappcloud.io")
+
 	opts := zap.Options{
 		Development: true,
 	}
