@@ -4,7 +4,7 @@ IMG ?= controller:latest
 ENVTEST_K8S_VERSION = 1.26.1
 
 REGION_NAME ?= ts-1
-BASE_DOMAIN ?= staging-snappcloud.io
+REGION_HOSTNAME ?= okd4.ts-1.staging-snappcloud.io
 ROUTER_CONTOUR_RATIO ?= 1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)

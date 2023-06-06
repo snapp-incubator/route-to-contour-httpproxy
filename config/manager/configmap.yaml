@@ -6,4 +6,4 @@ metadata:
 data:
   ROUTER_CONTOUR_RATIO: 1
   REGION_NAME: ts-1
-  BASE_DOMAIN: staging-snappcloud.io
+  REGION_HOSTNAME: okd4.ts-1.staging-snappcloud.io

@@ -82,8 +82,8 @@ func main() {
 		routerToContourRatio int
 		// The name of the region where controller is deployed in
 		regionName string
-		// The base-domain for the cluster, e.g. snappcloud.io or staging-snappcloud.i
-		baseDomain string
+		// The region hostname for the cluster, e.g. snappcloud.io or okd4.ts-1.staging-snappcloud.io
+		regionHostname string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -93,7 +93,7 @@ func main() {
 
 	routerToContourRatio = getIntEnv("ROUTER_CONTOUR_RATIO", 1)
 	regionName = getStrEnv("REGION_NAME", "ts-1")
-	baseDomain = getStrEnv("BASE_DOMAIN", "staging-snappcloud.io")
+	regionHostname = getStrEnv("REGION_HOSTNAME", "staging-snappcloud.io")
 
 	opts := zap.Options{
 		Development: true,
@@ -132,7 +132,7 @@ func main() {
 		Scheme:               mgr.GetScheme(),
 		RouterToContourRatio: routerToContourRatio,
 		RegionName:           regionName,
-		BaseDomain:           baseDomain,
+		RegionHostname:       regionHostname,
 		Route:                &routev1.Route{},
 		Httpproxy:            &contourv1.HTTPProxy{},
 	}).SetupWithManager(mgr); err != nil {
