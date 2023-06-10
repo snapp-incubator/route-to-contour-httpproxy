@@ -18,6 +18,7 @@ package router
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -376,6 +377,13 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 	}
 
 	for _, port := range svc.Spec.Ports {
+		if port.Protocol != corev1.ProtocolTCP {
+			return ports, goerrors.New(fmt.Sprintf(
+				"specified port protocol %s on serice %s is not supported",
+				port.Protocol,
+				svc.GetName(),
+			))
+		}
 		if port.Name == targetPortName || port.Port == int32(targetPort) {
 			ports = []int{int(port.Port)}
 			return ports, nil
