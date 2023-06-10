@@ -325,10 +325,6 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 		}
 	}
 
-	if err := ctrl.SetControllerReference(r.Route, httpproxy, r.Scheme); err != nil {
-		return nil, err
-	}
-
 	return httpproxy, nil
 }
 
