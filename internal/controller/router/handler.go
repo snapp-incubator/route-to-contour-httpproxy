@@ -317,12 +317,12 @@ func getIngressClass(route *routev1.Route) string {
 }
 
 func getIPWhitelist(route *routev1.Route) []contourv1.IPFilterPolicy {
+	filterPolicies := make([]contourv1.IPFilterPolicy, 0)
 	whitelist, ok := route.Annotations[consts.AnnotIPWhitelist]
 	if !ok {
-		return []contourv1.IPFilterPolicy{}
+		return filterPolicies
 	}
 	whitelistCIDRs := strings.Split(whitelist, " ")
-	filterPolicies := make([]contourv1.IPFilterPolicy, len(whitelistCIDRs))
 	for _, cidr := range whitelistCIDRs {
 		filterPolicies = append(filterPolicies, contourv1.IPFilterPolicy{
 			Source: contourv1.IPFilterSourcePeer,
