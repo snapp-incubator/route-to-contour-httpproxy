@@ -67,34 +67,38 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	r.logger = log.FromContext(ctx)
 	r.req = &req
 
-	subrecs := []subreconciler.Fn{
-		r.findRoute,
-		r.ignorePaused,
-		r.findSameRoutes,
-		r.initVars,
-		r.ensureHttpproxy,
-	}
-
-	for _, subrec := range subrecs {
-		result, err := subrec(ctx)
-		if subreconciler.ShouldHaltOrRequeue(result, err) {
-			return subreconciler.Evaluate(result, err)
-		}
-	}
-
-	return subreconciler.Evaluate(subreconciler.DoNotRequeue())
-}
-
-func (r *RouteReconciler) findRoute(ctx context.Context) (*ctrl.Result, error) {
-	if err := r.Get(ctx, r.req.NamespacedName, r.Route); err != nil {
+	switch err := r.Get(ctx, r.req.NamespacedName, r.Route); {
+	case errors.IsNotFound(err):
+		return ctrl.Result{Requeue: false}, nil
+	case err != nil:
 		r.logger.Error(err, "failed to get route")
-		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
-	}
+		return ctrl.Result{Requeue: true}, nil
+	default:
+		// reconcile functions are the same whether the route is
+		// created, updated or deleted because a single httpproxy may
+		// relate to several routes with the same host
+		subrecs := []subreconciler.Fn{
+			r.ignorePaused,
+			r.findSameRoutes,
+			r.initVars,
+			r.ensureHttpproxy,
+		}
+		for _, subrec := range subrecs {
+			result, err := subrec(ctx)
+			if subreconciler.ShouldHaltOrRequeue(result, err) {
+				return subreconciler.Evaluate(result, err)
+			}
+		}
 
-	return subreconciler.ContinueReconciling()
+		return subreconciler.Evaluate(subreconciler.DoNotRequeue())
+	}
 }
 
 func (r *RouteReconciler) ignorePaused(ctx context.Context) (*ctrl.Result, error) {
+	if !strings.Contains(r.Route.Spec.Host, ".apps.private.okd4.teh-1") {
+		return subreconciler.DoNotRequeue()
+	}
+
 	if utils.IsPaused(r.Route) {
 		r.logger.Info("ignoring paused route")
 		return subreconciler.DoNotRequeue()
@@ -107,7 +111,7 @@ func (r *RouteReconciler) findSameRoutes(ctx context.Context) (*ctrl.Result, err
 	nsRoutes := routev1.RouteList{}
 	if err := r.List(ctx, &nsRoutes, client.InNamespace(r.Route.Namespace)); err != nil {
 		r.logger.Error(err, "failed to list related routes")
-		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+		return subreconciler.RequeueWithError(err)
 	}
 
 	sameRoutes := make([]routev1.Route, 0)
@@ -127,6 +131,8 @@ func (r *RouteReconciler) initVars(ctx context.Context) (*ctrl.Result, error) {
 	r.tlsSecretName = fmt.Sprintf("%s-tls", r.Route.Name)
 	r.globalTlsSecretName = fmt.Sprintf("%s/%s", consts.TLSSecretNS, consts.TLSSecretName)
 
+	// use host name prefix for httpproxy name because
+	// an httpproxy may relate to several routes with the same host
 	commonRouteSuffix := fmt.Sprintf(".okd4.%s.%s", r.RegionName, r.BaseDomain)
 	r.httpproxyName = strings.ReplaceAll(strings.TrimSuffix(r.Route.Spec.Host, commonRouteSuffix), ".", "-")
 
@@ -134,14 +140,32 @@ func (r *RouteReconciler) initVars(ctx context.Context) (*ctrl.Result, error) {
 }
 
 func (r *RouteReconciler) ensureHttpproxy(ctx context.Context) (*ctrl.Result, error) {
-	switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.httpproxyName}, r.Httpproxy); {
-	case err == nil:
-		return r.updateHttpproxy(ctx)
-	case errors.IsNotFound(err):
-		return r.createHttpproxy(ctx)
-	default:
-		r.logger.Error(err, "failed to get desired httpproxy")
-		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+	if len(r.sameRoutes) <= 1 {
+		// httpproxy is for a deleted route, delete it
+		switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.httpproxyName}, r.Httpproxy); {
+		case err == nil:
+			if err := r.Delete(ctx, r.Httpproxy); err != nil {
+				r.logger.Error(err, "failed to delete httpproxy")
+				return subreconciler.RequeueWithError(err)
+			}
+			return subreconciler.ContinueReconciling()
+		case errors.IsNotFound(err):
+			return subreconciler.ContinueReconciling()
+		default:
+			r.logger.Error(err, "failed to get httpproxy")
+			return subreconciler.RequeueWithError(err)
+		}
+	} else {
+		// there are multiple routes related to this httpproxy, create it or update it
+		switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.httpproxyName}, r.Httpproxy); {
+		case err == nil:
+			return r.updateHttpproxy(ctx)
+		case errors.IsNotFound(err):
+			return r.createHttpproxy(ctx)
+		default:
+			r.logger.Error(err, "failed to get httpproxy")
+			return subreconciler.RequeueWithError(err)
+		}
 	}
 }
 
@@ -149,7 +173,7 @@ func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, er
 	desired, err := r.assembleHttpproxy(ctx)
 	if err != nil {
 		r.logger.Error(err, "failed to convert route to httpproxy")
-		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+		return subreconciler.RequeueWithError(err)
 	}
 
 	if !reflect.DeepEqual(r.Httpproxy.Spec, desired.Spec) {
@@ -157,7 +181,7 @@ func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, er
 		err = r.Update(ctx, r.Httpproxy)
 		if err != nil {
 			r.logger.Error(err, "failed to update httpproxy")
-			return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+			return subreconciler.RequeueWithDelay(consts.DefaultRequeueTime)
 		}
 	}
 
@@ -168,12 +192,12 @@ func (r *RouteReconciler) createHttpproxy(ctx context.Context) (*ctrl.Result, er
 	desired, err := r.assembleHttpproxy(ctx)
 	if err != nil {
 		r.logger.Error(err, "failed to convert route to httpproxy")
-		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+		return subreconciler.RequeueWithError(err)
 	}
 
 	if err = r.Create(ctx, desired); err != nil {
 		r.logger.Error(err, "failed to create httpproxy")
-		return subreconciler.RequeueWithDelayAndError(consts.DefaultRequeueTime, err)
+		return subreconciler.RequeueWithDelay(consts.DefaultRequeueTime)
 	}
 
 	return subreconciler.ContinueReconciling()
