@@ -238,46 +238,66 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context) (*contourv1.HTT
 		return nil, err
 	}
 
-	for _, route := range r.sameRoutes {
-		ports, err := r.getTargetPorts(ctx, &route)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get route target port, %v", err)
+	// use `tcpproxy` for passthrough mode and `routes` otherwise
+	if r.Route.Spec.TLS != nil && r.Route.Spec.TLS.Termination == "passthrough" {
+		httpproxy.Spec.TCPProxy = &contourv1.TCPProxy{}
+		for _, route := range r.sameRoutes {
+			ports, err := r.getTargetPorts(ctx, &route)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get route target port, %v", err)
+			}
+
+			for _, port := range ports {
+				svc := contourv1.Service{
+					Name:   route.Spec.To.Name,
+					Port:   port,
+					Weight: int64(pointer.Int32Deref(route.Spec.To.Weight, 1)),
+				}
+				httpproxy.Spec.TCPProxy.Services = append(httpproxy.Spec.TCPProxy.Services, svc)
+			}
 		}
+	} else {
+		for _, route := range r.sameRoutes {
+			ports, err := r.getTargetPorts(ctx, &route)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get route target port, %v", err)
+			}
 
-		for _, port := range ports {
-			httpproxyRoute := contourv1.Route{
-				Services: []contourv1.Service{
-					{
-						Name:   route.Spec.To.Name,
-						Port:   port,
-						Weight: int64(pointer.Int32Deref(route.Spec.To.Weight, 1)),
+			for _, port := range ports {
+				httpproxyRoute := contourv1.Route{
+					Services: []contourv1.Service{
+						{
+							Name:   route.Spec.To.Name,
+							Port:   port,
+							Weight: int64(pointer.Int32Deref(route.Spec.To.Weight, 1)),
+						},
 					},
-				},
-				LoadBalancerPolicy: loadBalancerPolicy,
-				TimeoutPolicy: &contourv1.TimeoutPolicy{
-					Response: getTimeout(&route),
-				},
-				EnableWebsockets: true,
-			}
-
-			if route.Spec.Path != "" {
-				httpproxyRoute.Conditions = []contourv1.MatchCondition{
-					{Prefix: route.Spec.Path},
+					LoadBalancerPolicy: loadBalancerPolicy,
+					TimeoutPolicy: &contourv1.TimeoutPolicy{
+						Response: getTimeout(&route),
+					},
+					EnableWebsockets: true,
 				}
-			}
 
-			if route.Spec.TLS != nil {
-				if route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
-					httpproxyRoute.PermitInsecure = true
+				if route.Spec.Path != "" {
+					httpproxyRoute.Conditions = []contourv1.MatchCondition{
+						{Prefix: route.Spec.Path},
+					}
 				}
-			}
 
-			ipWhitelist := getIPWhitelist(&route)
-			if len(ipWhitelist) > 0 {
-				httpproxyRoute.IPAllowFilterPolicy = ipWhitelist
-			}
+				if route.Spec.TLS != nil {
+					if route.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
+						httpproxyRoute.PermitInsecure = true
+					}
+				}
 
-			httpproxy.Spec.Routes = append(httpproxy.Spec.Routes, httpproxyRoute)
+				ipWhitelist := getIPWhitelist(&route)
+				if len(ipWhitelist) > 0 {
+					httpproxyRoute.IPAllowFilterPolicy = ipWhitelist
+				}
+
+				httpproxy.Spec.Routes = append(httpproxy.Spec.Routes, httpproxyRoute)
+			}
 		}
 	}
 
