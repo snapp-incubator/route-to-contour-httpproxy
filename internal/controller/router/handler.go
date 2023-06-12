@@ -18,7 +18,6 @@ package router
 
 import (
 	"context"
-	goerrors "errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -36,6 +35,7 @@ import (
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -65,6 +65,8 @@ type RouteReconciler struct {
 //+kubebuilder:rbac:groups=router.openshift.io,resources=routers/finalizers,verbs=update
 
 func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	var subrecs []subreconciler.Fn
+
 	r.logger = log.FromContext(ctx)
 	r.req = &req
 
@@ -74,32 +76,35 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	case err != nil:
 		r.logger.Error(err, "failed to get route")
 		return ctrl.Result{Requeue: true}, nil
-	default:
-		// reconcile functions are the same whether the route is
-		// created, updated or deleted because a single httpproxy may
-		// relate to several routes with the same host
-		subrecs := []subreconciler.Fn{
+	case utils.IsDeleted(r.Route):
+		subrecs = []subreconciler.Fn{
 			r.ignorePaused,
 			r.findSameRoutes,
 			r.initVars,
 			r.ensureHttpproxy,
+			r.removeTLSSecret,
+			r.removeRouteFinalizer,
 		}
-		for _, subrec := range subrecs {
-			result, err := subrec(ctx)
-			if subreconciler.ShouldHaltOrRequeue(result, err) {
-				return subreconciler.Evaluate(result, err)
-			}
+	default:
+		subrecs = []subreconciler.Fn{
+			r.ignorePaused,
+			r.findSameRoutes,
+			r.initVars,
+			r.ensureHttpproxy,
+			r.addRouteFinalizer,
 		}
-
-		return subreconciler.Evaluate(subreconciler.DoNotRequeue())
 	}
+
+	for _, subrec := range subrecs {
+		result, err := subrec(ctx)
+		if subreconciler.ShouldHaltOrRequeue(result, err) {
+			return subreconciler.Evaluate(result, err)
+		}
+	}
+	return subreconciler.Evaluate(subreconciler.DoNotRequeue())
 }
 
 func (r *RouteReconciler) ignorePaused(ctx context.Context) (*ctrl.Result, error) {
-	if !strings.Contains(r.Route.Spec.Host, ".apps.private.okd4.teh-1") {
-		return subreconciler.DoNotRequeue()
-	}
-
 	if utils.IsPaused(r.Route) {
 		r.logger.Info("ignoring paused route")
 		return subreconciler.DoNotRequeue()
@@ -129,19 +134,19 @@ func (r *RouteReconciler) findSameRoutes(ctx context.Context) (*ctrl.Result, err
 }
 
 func (r *RouteReconciler) initVars(ctx context.Context) (*ctrl.Result, error) {
-	r.tlsSecretName = fmt.Sprintf("%s-tls", r.Route.Name)
 	r.globalTlsSecretName = fmt.Sprintf("%s/%s", consts.TLSSecretNS, consts.TLSSecretName)
 
-	// use host name prefix for httpproxy name because
+	// use host name prefix for names becuase
 	// an httpproxy may relate to several routes with the same host
 	commonRouteSuffix := fmt.Sprintf(".okd4.%s.%s", r.RegionName, r.BaseDomain)
 	r.httpproxyName = strings.ReplaceAll(strings.TrimSuffix(r.Route.Spec.Host, commonRouteSuffix), ".", "-")
+	r.tlsSecretName = fmt.Sprintf("%s-tls", r.httpproxyName)
 
 	return subreconciler.ContinueReconciling()
 }
 
 func (r *RouteReconciler) ensureHttpproxy(ctx context.Context) (*ctrl.Result, error) {
-	if len(r.sameRoutes) <= 1 {
+	if len(r.sameRoutes) == 1 && utils.IsDeleted(&r.sameRoutes[0]) {
 		// httpproxy is for a deleted route, delete it
 		switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.httpproxyName}, r.Httpproxy); {
 		case err == nil:
@@ -168,6 +173,22 @@ func (r *RouteReconciler) ensureHttpproxy(ctx context.Context) (*ctrl.Result, er
 			return subreconciler.RequeueWithError(err)
 		}
 	}
+}
+
+func (r *RouteReconciler) addRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
+	controllerutil.AddFinalizer(r.Route, utils.RouteFinalizer)
+	if err := r.Update(ctx, r.Route); err != nil {
+		return subreconciler.RequeueWithError(err)
+	}
+	return subreconciler.ContinueReconciling()
+}
+
+func (r *RouteReconciler) removeRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
+	controllerutil.RemoveFinalizer(r.Route, utils.RouteFinalizer)
+	if err := r.Update(ctx, r.Route); err != nil {
+		return subreconciler.RequeueWithError(err)
+	}
+	return subreconciler.ContinueReconciling()
 }
 
 func (r *RouteReconciler) updateHttpproxy(ctx context.Context) (*ctrl.Result, error) {
@@ -378,11 +399,11 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 
 	for _, port := range svc.Spec.Ports {
 		if port.Protocol != corev1.ProtocolTCP {
-			return ports, goerrors.New(fmt.Sprintf(
+			return ports, fmt.Errorf(
 				"specified port protocol %s on serice %s is not supported",
 				port.Protocol,
 				svc.GetName(),
-			))
+			)
 		}
 		if port.Name == targetPortName || port.Port == int32(targetPort) {
 			ports = []int{int(port.Port)}
@@ -413,6 +434,27 @@ func (r *RouteReconciler) ensureTLSSecret(ctx context.Context) error {
 		return r.Create(ctx, secret)
 	default:
 		return err
+	}
+}
+
+func (r *RouteReconciler) removeTLSSecret(ctx context.Context) (*reconcile.Result, error) {
+	if r.Route.Spec.TLS == nil || r.Route.Spec.TLS.Key == "" {
+		return subreconciler.ContinueReconciling()
+	}
+
+	secret := corev1.Secret{}
+	switch err := r.Get(ctx, types.NamespacedName{Namespace: r.Route.Namespace, Name: r.tlsSecretName}, &secret); {
+	case err == nil:
+		return subreconciler.ContinueReconciling()
+	case errors.IsNotFound(err):
+		if err := r.Delete(ctx, &secret); err != nil {
+			r.logger.Error(err, "failed to delete tls secret")
+			return subreconciler.RequeueWithError(err)
+		}
+		return subreconciler.ContinueReconciling()
+	default:
+		r.logger.Error(err, "failed to get tls secret")
+		return subreconciler.RequeueWithError(err)
 	}
 }
 
