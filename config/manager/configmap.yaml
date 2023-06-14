@@ -5,5 +5,3 @@ metadata:
   namespace: route-to-contour-httpproxy-system
 data:
   ROUTER_CONTOUR_RATIO: 1
-  REGION_NAME: ts-1
-  BASE_DOMAIN: staging-snappcloud.io

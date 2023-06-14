@@ -67,14 +67,6 @@ func getIntEnv(name string, defaultValue int) int {
 	return value
 }
 
-func getStrEnv(name, defaultValue string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		return defaultValue
-	}
-	return value
-}
-
 func main() {
 	var (
 		metricsAddr          string
@@ -82,10 +74,6 @@ func main() {
 		probeAddr            string
 		// The ratio of the count of router nodes to the count of contour nodes
 		routerToContourRatio int
-		// The name of the region where controller is deployed in
-		regionName string
-		// The base-domain for the cluster, e.g. snappcloud.io or staging-snappcloud.i
-		baseDomain string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -94,8 +82,6 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 
 	routerToContourRatio = getIntEnv("ROUTER_CONTOUR_RATIO", 1)
-	regionName = getStrEnv("REGION_NAME", "ts-1")
-	baseDomain = getStrEnv("BASE_DOMAIN", "staging-snappcloud.io")
 
 	opts := zap.Options{
 		Development: true,
@@ -145,8 +131,6 @@ func main() {
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		RouterToContourRatio: routerToContourRatio,
-		RegionName:           regionName,
-		BaseDomain:           baseDomain,
 		Route:                &routev1.Route{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Router")

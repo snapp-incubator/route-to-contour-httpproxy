@@ -47,8 +47,6 @@ type RouteReconciler struct {
 	client.Client
 	Scheme               *runtime.Scheme
 	RouterToContourRatio int
-	RegionName           string
-	BaseDomain           string
 	Route                *routev1.Route
 	Httpproxy            *contourv1.HTTPProxy
 	req                  *reconcile.Request
