@@ -18,6 +18,7 @@ package route
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"reflect"
 	"sort"
@@ -290,7 +291,7 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 				if err != nil {
 					return nil, fmt.Errorf("failed to ensure tls secret: %w", err)
 				}
-				secret, err := r.findTLSSecret(ctx, owner)
+				secret, err := r.findTLSSecretByOwner(ctx, owner)
 				if err != nil {
 					return nil, fmt.Errorf("failed to find tls secret: %w", err)
 				}
@@ -424,25 +425,24 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 	return ports, nil
 }
 
-func (r *RouteReconciler) findTLSSecret(ctx context.Context, route *routev1.Route) (*corev1.Secret, error) {
-	var existingSecret *corev1.Secret
+func (r *RouteReconciler) findTLSSecretByOwner(ctx context.Context, route *routev1.Route) (*corev1.Secret, error) {
 	secretList := &corev1.SecretList{}
 	if err := r.List(ctx, secretList, client.InNamespace(route.Namespace)); err != nil {
-		return existingSecret, err
+		return nil, err
 	}
 
 	for _, secret := range secretList.Items {
 		for _, ownerRef := range secret.GetOwnerReferences() {
 			if ownerRef.Controller != nil && *ownerRef.Controller && ownerRef.UID == route.UID {
-				return existingSecret, nil
+				return &secret, nil
 			}
 		}
 	}
-	return existingSecret, consts.NotFoundError
+	return nil, consts.NotFoundError
 }
 
 func (r *RouteReconciler) ensureTLSSecret(ctx context.Context, route *routev1.Route) error {
-	existingSecret, err := r.findTLSSecret(ctx, route)
+	existingSecret, err := r.findTLSSecretByOwner(ctx, route)
 	switch {
 	case err == nil:
 		secret := r.assembleTLSSecret(route)
@@ -456,6 +456,9 @@ func (r *RouteReconciler) ensureTLSSecret(ctx context.Context, route *routev1.Ro
 		return nil
 	case err == consts.NotFoundError:
 		secret := r.assembleTLSSecret(route)
+		if err := controllerutil.SetControllerReference(route, secret, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set controller owner on secret: %w", err)
+		}
 		if err := r.Create(ctx, secret); err != nil {
 			return fmt.Errorf("failed to create tls secret: %w", err)
 		}
@@ -470,7 +473,7 @@ func (r *RouteReconciler) removeTLSSecret(ctx context.Context) (*ctrl.Result, er
 		return nil, nil
 	}
 
-	existingSecret, err := r.findTLSSecret(ctx, r.Route)
+	existingSecret, err := r.findTLSSecretByOwner(ctx, r.Route)
 	switch {
 	case err == nil:
 		return nil, nil
@@ -485,14 +488,19 @@ func (r *RouteReconciler) removeTLSSecret(ctx context.Context) (*ctrl.Result, er
 }
 
 func (r *RouteReconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
+	encodedKey := make([]byte, base64.StdEncoding.EncodedLen(len(route.Spec.TLS.Key)))
+	encodedCrt := make([]byte, base64.StdEncoding.EncodedLen(len(route.Spec.TLS.Certificate)))
+	base64.StdEncoding.Encode(encodedKey, []byte(route.Spec.TLS.Key))
+	base64.StdEncoding.Encode(encodedCrt, []byte(route.Spec.TLS.Certificate))
+
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:    route.Namespace,
 			GenerateName: consts.TLSSecretGenerateName,
 		},
-		StringData: map[string]string{
-			"tls.key": route.Spec.TLS.Key,
-			"tls.crt": route.Spec.TLS.Certificate,
+		Data: map[string][]byte{
+			"tls.key": encodedKey,
+			"tls.crt": encodedCrt,
 		},
 		Type: corev1.SecretTypeTLS,
 	}
