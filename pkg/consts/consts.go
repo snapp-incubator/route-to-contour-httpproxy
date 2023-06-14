@@ -1,8 +1,12 @@
 package consts
 
-import "time"
+type CustomError string
+
+func (e CustomError) Error() string { return string(e) }
 
 const (
+	LabelKeyRouterName = "router"
+
 	haproxyAnnotationPrefix = "haproxy.router.openshift.io/"
 
 	AnnotRateLimit         = haproxyAnnotationPrefix + "rate-limit-connections"
@@ -12,10 +16,9 @@ const (
 	AnnotIPWhitelist       = haproxyAnnotationPrefix + "ip_whitelist"
 	AnnotDisableCookies    = haproxyAnnotationPrefix + "disable_cookies"
 
-	DefaultRequeueTime = 15 * time.Second
-
-	TLSSecretNS   = "openshift-ingress"
-	TLSSecretName = "letsencrypt"
+	TLSSecretNS         = "openshift-ingress"
+	TLSSecretName       = "letsencrypt"
+	GlobalTLSSecretName = TLSSecretNS + "/" + TLSSecretName
 
 	RateLimitUnitMinute   = "minute"
 	HAProxyDefaultTimeout = "5s"
@@ -29,4 +32,9 @@ const (
 	StrategyWeightedLeastRequest = "WeightedLeastRequest"
 	StrategyRequestHash          = "RequestHash"
 	StrategyDefault              = StrategyWeightedLeastRequest
+
+	HTTPProxyGenerateName = "managed-httpproxy-"
+	TLSSecretGenerateName = "managed-tls-secret-"
+
+	NotFoundError = CustomError("not found")
 )

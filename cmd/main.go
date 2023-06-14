@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"strconv"
@@ -31,6 +32,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -127,6 +129,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&routev1.Route{},
+		"spec.host",
+		func(object client.Object) []string {
+			route := object.(*routev1.Route)
+			return []string{route.Spec.Host}
+		}); err != nil {
+		setupLog.Error(err, "failed to create index for .spec.host", "controller", "Router")
+		os.Exit(1)
+	}
+
 	if err = (&router.RouteReconciler{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
@@ -134,7 +148,6 @@ func main() {
 		RegionName:           regionName,
 		BaseDomain:           baseDomain,
 		Route:                &routev1.Route{},
-		Httpproxy:            &contourv1.HTTPProxy{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Router")
 		os.Exit(1)
