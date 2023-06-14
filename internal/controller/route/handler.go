@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package router
+package route
 
 import (
 	"context"
@@ -53,9 +53,9 @@ type RouteReconciler struct {
 	logger               logr.Logger
 }
 
-// +kubebuilder:rbac:groups=router.openshift.io,resources=routers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=router.openshift.io,resources=routers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=router.openshift.io,resources=routers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=route.openshift.io,resources=routes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=route.openshift.io,resources=routes/finalizers,verbs=update
 // +kubebuilder:rbac:groups=projectcontour.io,resources=httpproxies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch

@@ -1,4 +1,4 @@
-package router
+package route
 
 import (
 	routev1 "github.com/openshift/api/route/v1"

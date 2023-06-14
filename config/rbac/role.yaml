@@ -38,9 +38,9 @@ rules:
   - update
   - watch
 - apiGroups:
-  - router.openshift.io
+  - route.openshift.io
   resources:
-  - routers
+  - routes
   verbs:
   - create
   - delete
@@ -50,15 +50,15 @@ rules:
   - update
   - watch
 - apiGroups:
-  - router.openshift.io
+  - route.openshift.io
   resources:
-  - routers/finalizers
+  - routes/finalizers
   verbs:
   - update
 - apiGroups:
-  - router.openshift.io
+  - route.openshift.io
   resources:
-  - routers/status
+  - routes/status
   verbs:
   - get
   - patch

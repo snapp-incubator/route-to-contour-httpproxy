@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/router"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/route"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -120,20 +120,20 @@ func main() {
 		&routev1.Route{},
 		"spec.host",
 		func(object client.Object) []string {
-			route := object.(*routev1.Route)
-			return []string{route.Spec.Host}
+			r := object.(*routev1.Route)
+			return []string{r.Spec.Host}
 		}); err != nil {
-		setupLog.Error(err, "failed to create index for .spec.host", "controller", "Router")
+		setupLog.Error(err, "failed to create index for .spec.host", "controller", "Route")
 		os.Exit(1)
 	}
 
-	if err = (&router.RouteReconciler{
+	if err = (&route.RouteReconciler{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
 		RouterToContourRatio: routerToContourRatio,
 		Route:                &routev1.Route{},
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Router")
+		setupLog.Error(err, "unable to create controller", "controller", "Route")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
