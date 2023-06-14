@@ -18,7 +18,6 @@ package route
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"reflect"
 	"sort"
@@ -488,19 +487,14 @@ func (r *RouteReconciler) removeTLSSecret(ctx context.Context) (*ctrl.Result, er
 }
 
 func (r *RouteReconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
-	encodedKey := make([]byte, base64.StdEncoding.EncodedLen(len(route.Spec.TLS.Key)))
-	encodedCrt := make([]byte, base64.StdEncoding.EncodedLen(len(route.Spec.TLS.Certificate)))
-	base64.StdEncoding.Encode(encodedKey, []byte(route.Spec.TLS.Key))
-	base64.StdEncoding.Encode(encodedCrt, []byte(route.Spec.TLS.Certificate))
-
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:    route.Namespace,
 			GenerateName: consts.TLSSecretGenerateName,
 		},
 		Data: map[string][]byte{
-			"tls.key": encodedKey,
-			"tls.crt": encodedCrt,
+			"tls.key": []byte(route.Spec.TLS.Key),
+			"tls.crt": []byte(route.Spec.TLS.Certificate),
 		},
 		Type: corev1.SecretTypeTLS,
 	}

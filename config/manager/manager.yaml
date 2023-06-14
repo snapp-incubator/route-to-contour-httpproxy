@@ -73,7 +73,7 @@ spec:
         envFrom:
           - configMapRef:
               name: route-to-httpproxy-config
-        image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:1.2.1
+        image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:1.2.2
         name: manager
         securityContext:
           allowPrivilegeEscalation: false
