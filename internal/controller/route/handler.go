@@ -376,6 +376,10 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 				}
 
 				if sameRoute.Spec.TLS != nil {
+					if sameRoute.Spec.TLS.Termination == routev1.TLSTerminationReencrypt {
+						httpproxyRoute.Services[0].Protocol = pointer.String("tls")
+					}
+
 					if sameRoute.Spec.TLS.InsecureEdgeTerminationPolicy == routev1.InsecureEdgeTerminationPolicyAllow {
 						httpproxyRoute.PermitInsecure = true
 					}
