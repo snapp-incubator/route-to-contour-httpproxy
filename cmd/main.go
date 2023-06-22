@@ -28,7 +28,6 @@ import (
 
 	routev1 "github.com/openshift/api/route/v1"
 	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -133,7 +132,6 @@ func main() {
 		Scheme:               mgr.GetScheme(),
 		RouterToContourRatio: routerToContourRatio,
 		Route:                &routev1.Route{},
-		TargetService:        &corev1.Service{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Route")
 		os.Exit(1)

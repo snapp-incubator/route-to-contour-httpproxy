@@ -48,11 +48,9 @@ type RouteReconciler struct {
 	Scheme               *runtime.Scheme
 	RouterToContourRatio int
 	Route                *routev1.Route
-	// the target service of the route
-	TargetService *corev1.Service
-	Httpproxy     *contourv1.HTTPProxy
-	req           *reconcile.Request
-	logger        logr.Logger
+	Httpproxy            *contourv1.HTTPProxy
+	req                  *reconcile.Request
+	logger               logr.Logger
 }
 
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
@@ -101,7 +99,6 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		subrecs = append(subrecs,
 			r.findHTTPProxybyOwner,
 			r.handleHostMismatch,
-			r.findTargetService,
 			r.handleRoute,
 			r.addRouteFinalizer,
 		)
@@ -408,7 +405,13 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 		targetPort = route.Spec.Port.TargetPort.IntValue()
 	}
 
-	for _, port := range r.TargetService.Spec.Ports {
+	svc := &corev1.Service{}
+
+	if err := r.Get(ctx, types.NamespacedName{Namespace: route.Namespace, Name: route.Spec.To.Name}, svc); err != nil {
+		return ports, fmt.Errorf("failed to get route target service")
+	}
+
+	for _, port := range svc.Spec.Ports {
 		if port.Protocol != corev1.ProtocolTCP {
 			continue
 		}
@@ -526,17 +529,4 @@ func (r *RouteReconciler) getSameHostRoutes(ctx context.Context, namespace, host
 	})
 
 	return sameHostRoutes, nil
-}
-
-func (r *RouteReconciler) findTargetService(ctx context.Context) (*ctrl.Result, error) {
-	if err := r.Get(
-		ctx,
-		types.NamespacedName{Namespace: r.Route.Namespace, Name: r.Route.Spec.To.Name},
-		r.TargetService,
-	); err != nil {
-		r.logger.Error(err, "failed to get route target service")
-		return subreconciler.RequeueWithError(err)
-	}
-
-	return subreconciler.ContinueReconciling()
 }
