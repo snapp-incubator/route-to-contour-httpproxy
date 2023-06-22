@@ -75,11 +75,6 @@ spec:
               name: route-to-httpproxy-config
         image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:1.2.4
         name: manager
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - "ALL"
         livenessProbe:
           httpGet:
             path: /healthz
