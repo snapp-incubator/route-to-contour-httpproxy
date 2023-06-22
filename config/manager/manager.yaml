@@ -73,7 +73,7 @@ spec:
         envFrom:
           - configMapRef:
               name: route-to-httpproxy-config
-        image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:1.2.4
+        image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:1.2.5
         name: manager
         livenessProbe:
           httpGet:

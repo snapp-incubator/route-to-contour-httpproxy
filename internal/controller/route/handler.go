@@ -307,11 +307,6 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 		}
 	}
 
-	loadBalancerPolicy, err := utils.GetLoadBalancerPolicy(owner)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get loadbalancer policy: %w", err)
-	}
-
 	// use `tcpproxy` for passthrough mode and `routes` for other termination modes
 	if owner.Spec.TLS != nil && owner.Spec.TLS.Termination == "passthrough" {
 		httpproxy.Spec.TCPProxy = &contourv1.TCPProxy{}
@@ -332,6 +327,11 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 		}
 	} else {
 		for _, sameRoute := range sameHostRoutes {
+			loadBalancerPolicy, err := utils.GetLoadBalancerPolicy(&sameRoute)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get loadbalancer policy: %w", err)
+			}
+
 			ports, err := r.getTargetPorts(ctx, &sameRoute)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get route target port, %v", err)
