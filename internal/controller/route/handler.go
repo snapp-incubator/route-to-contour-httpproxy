@@ -347,10 +347,13 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 						},
 					},
 					LoadBalancerPolicy: loadBalancerPolicy,
-					TimeoutPolicy: &contourv1.TimeoutPolicy{
-						Response: utils.GetTimeout(&sameRoute),
-					},
-					EnableWebsockets: true,
+					EnableWebsockets:   true,
+				}
+
+				if routeTimeout, ok := sameRoute.Annotations[consts.AnnotTimeout]; ok {
+					httpproxyRoute.TimeoutPolicy = &contourv1.TimeoutPolicy{
+						Response: routeTimeout,
+					}
 				}
 
 				rateLimitEnabled, rateLimit := utils.GetRateLimit(&sameRoute)
