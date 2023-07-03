@@ -66,14 +66,6 @@ func GetIPWhitelist(route *routev1.Route) []contourv1.IPFilterPolicy {
 	return filterPolicies
 }
 
-func GetTimeout(route *routev1.Route) string {
-	timeout := consts.HAProxyDefaultTimeout
-	if routeTimeout, ok := route.Annotations[consts.AnnotTimeout]; ok {
-		timeout = routeTimeout
-	}
-	return timeout
-}
-
 func GetLoadBalancerPolicy(route *routev1.Route) (*contourv1.LoadBalancerPolicy, error) {
 	lbPolicy := contourv1.LoadBalancerPolicy{}
 	disableCookies := route.Annotations[consts.AnnotDisableCookies]

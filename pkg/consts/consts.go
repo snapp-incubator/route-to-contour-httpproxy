@@ -20,8 +20,7 @@ const (
 	TLSSecretName       = "letsencrypt"
 	GlobalTLSSecretName = TLSSecretNS + "/" + TLSSecretName
 
-	RateLimitUnitMinute   = "minute"
-	HAProxyDefaultTimeout = "5s"
+	RateLimitUnitMinute = "minute"
 
 	RouteShardLabel         = "router"
 	DefaultIngressClassName = "private"
