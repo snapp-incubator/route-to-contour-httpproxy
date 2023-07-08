@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -254,19 +255,25 @@ func (r *RouteReconciler) handleRoute(ctx context.Context) (*ctrl.Result, error)
 	}
 }
 
-// waitForHttpproxy retries getting the httpproxy owned by the current route till its found
+// waitForHttpproxy retries getting the httpproxy owned by the current route.
+// This wait is necessary to due to possible lag between object creation and its
+// appearance in controller-runtime's cache
 func (r *RouteReconciler) waitForHttpproxy(ctx context.Context) (*ctrl.Result, error) {
-	for {
-		_, err := r.getHTTPProxyByOwner(ctx)
-		switch {
-		case err == nil:
-			return subreconciler.ContinueReconciling()
-		case err == consts.NotFoundError:
-			continue
-		default:
-			r.logger.Info(fmt.Sprintf("failed to find httpproxy by owner, %v", err))
-		}
+	err := retry.OnError(
+		retry.DefaultBackoff,
+		func(err error) bool {
+			return err != nil
+		},
+		func() error {
+			_, err := r.getHTTPProxyByOwner(ctx)
+			return err
+		},
+	)
+
+	if err != nil {
+		return subreconciler.RequeueWithError(fmt.Errorf("failed to wait for httpproxy, %v", err))
 	}
+	return subreconciler.ContinueReconciling()
 }
 
 func (r *RouteReconciler) addRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
