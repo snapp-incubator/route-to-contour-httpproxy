@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -100,6 +101,7 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			r.findHTTPProxybyOwner,
 			r.handleHostMismatch,
 			r.handleRoute,
+			r.waitForHttpproxy,
 			r.addRouteFinalizer,
 		)
 	}
@@ -112,21 +114,34 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return subreconciler.Evaluate(subreconciler.DoNotRequeue())
 }
 
+// findHTTPProxybyOwner is a wrapper around getHTTPProxybyOwner to be used as a subreconciler.Fn
 func (r *RouteReconciler) findHTTPProxybyOwner(ctx context.Context) (*ctrl.Result, error) {
+	httpproxy, err := r.getHTTPProxyByOwner(ctx)
+	switch {
+	case err == nil:
+		r.Httpproxy = httpproxy
+		return subreconciler.ContinueReconciling()
+	case err == consts.NotFoundError:
+		return subreconciler.ContinueReconciling()
+	default:
+		return subreconciler.RequeueWithError(err)
+	}
+}
+
+func (r *RouteReconciler) getHTTPProxyByOwner(ctx context.Context) (*contourv1.HTTPProxy, error) {
 	httpproxyList := contourv1.HTTPProxyList{}
 	if err := r.List(ctx, &httpproxyList, client.InNamespace(r.Route.Namespace)); err != nil {
-		return subreconciler.RequeueWithError(fmt.Errorf("failed to list httpproxies: %w", err))
+		return nil, fmt.Errorf("failed to list httpproxies: %w", err)
 	}
 
 	for _, httpproxy := range httpproxyList.Items {
 		for _, ownerRef := range httpproxy.GetOwnerReferences() {
 			if ownerRef.UID == r.Route.UID {
-				r.Httpproxy = &httpproxy
-				return subreconciler.ContinueReconciling()
+				return &httpproxy, nil
 			}
 		}
 	}
-	return subreconciler.ContinueReconciling()
+	return nil, consts.NotFoundError
 }
 
 func (r *RouteReconciler) handleRouteCleanup(ctx context.Context) (*ctrl.Result, error) {
@@ -240,6 +255,27 @@ func (r *RouteReconciler) handleRoute(ctx context.Context) (*ctrl.Result, error)
 	}
 }
 
+// waitForHttpproxy retries getting the httpproxy owned by the current route.
+// This wait is necessary to due to possible lag between object creation and its
+// appearance in controller-runtime's cache
+func (r *RouteReconciler) waitForHttpproxy(ctx context.Context) (*ctrl.Result, error) {
+	err := retry.OnError(
+		retry.DefaultBackoff,
+		func(err error) bool {
+			return err != nil
+		},
+		func() error {
+			_, err := r.getHTTPProxyByOwner(ctx)
+			return err
+		},
+	)
+
+	if err != nil {
+		return subreconciler.RequeueWithError(fmt.Errorf("failed to wait for httpproxy, %v", err))
+	}
+	return subreconciler.ContinueReconciling()
+}
+
 func (r *RouteReconciler) addRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
 	updated := controllerutil.AddFinalizer(r.Route, utils.RouteFinalizer)
 	if !updated {
@@ -290,7 +326,7 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 				if err != nil {
 					return nil, fmt.Errorf("failed to ensure tls secret: %w", err)
 				}
-				secret, err := r.findTLSSecretByOwner(ctx, owner)
+				secret, err := r.getTLSSecretByOwner(ctx, owner)
 				if err != nil {
 					return nil, fmt.Errorf("failed to find tls secret: %w", err)
 				}
@@ -431,7 +467,7 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 	return ports, nil
 }
 
-func (r *RouteReconciler) findTLSSecretByOwner(ctx context.Context, route *routev1.Route) (*corev1.Secret, error) {
+func (r *RouteReconciler) getTLSSecretByOwner(ctx context.Context, route *routev1.Route) (*corev1.Secret, error) {
 	secretList := &corev1.SecretList{}
 	if err := r.List(ctx, secretList, client.InNamespace(route.Namespace)); err != nil {
 		return nil, err
@@ -448,7 +484,7 @@ func (r *RouteReconciler) findTLSSecretByOwner(ctx context.Context, route *route
 }
 
 func (r *RouteReconciler) ensureTLSSecret(ctx context.Context, route *routev1.Route) error {
-	existingSecret, err := r.findTLSSecretByOwner(ctx, route)
+	existingSecret, err := r.getTLSSecretByOwner(ctx, route)
 	switch {
 	case err == nil:
 		secret := r.assembleTLSSecret(route)
@@ -479,14 +515,14 @@ func (r *RouteReconciler) removeTLSSecret(ctx context.Context) (*ctrl.Result, er
 		return nil, nil
 	}
 
-	existingSecret, err := r.findTLSSecretByOwner(ctx, r.Route)
+	existingSecret, err := r.getTLSSecretByOwner(ctx, r.Route)
 	switch {
 	case err == nil:
-		return nil, nil
-	case err == consts.NotFoundError:
 		if err := r.Delete(ctx, existingSecret); err != nil {
 			return nil, fmt.Errorf("failed to delete tls secret: %w", err)
 		}
+		return nil, nil
+	case err == consts.NotFoundError:
 		return nil, nil
 	default:
 		return nil, fmt.Errorf("failed to find tls secret: %w", err)
