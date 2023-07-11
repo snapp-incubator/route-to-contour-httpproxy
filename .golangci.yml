@@ -1,8 +1,6 @@
 run:
   skip-dirs:
     - vendor/
-  skip-files:
-    - ".*\\.pb\\.go"
 output:
   option: value
 linters:
