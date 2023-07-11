@@ -1,14 +1,25 @@
----
-name: Docker
+name: Main
 
 on:
-  push:
-    branches: [ main ]
-    tags: [ v* ]
+  push
 
 jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.19'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          version: latest
+          args: --timeout 5m
   docker:
     name: docker
+    if: startsWith(github.event.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs:
       - lint
@@ -27,11 +38,6 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
       - uses: docker/build-push-action@v4
         with:
           file: "Dockerfile"
