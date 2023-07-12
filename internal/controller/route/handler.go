@@ -37,21 +37,32 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/utils"
 )
 
-// RouteReconciler reconciles a Router object
-type RouteReconciler struct {
+// Reconciler reconciles a Router object
+type Reconciler struct {
 	client.Client
-	Scheme               *runtime.Scheme
-	RouterToContourRatio int
-	Route                *routev1.Route
-	Httpproxy            *contourv1.HTTPProxy
-	req                  *reconcile.Request
-	logger               logr.Logger
+	scheme    *runtime.Scheme
+	req       *reconcile.Request
+	logger    logr.Logger
+	cfg       *config.Config
+	route     *routev1.Route
+	httpproxy *contourv1.HTTPProxy
+}
+
+func NewReconciler(mgr manager.Manager, cfg *config.Config) *Reconciler {
+	return &Reconciler{
+		Client: mgr.GetClient(),
+		scheme: mgr.GetScheme(),
+		route:  &routev1.Route{},
+		cfg:    cfg,
+	}
 }
 
 // +kubebuilder:rbac:groups=route.openshift.io,resources=routes,verbs=get;list;watch;create;update;patch;delete
@@ -61,13 +72,13 @@ type RouteReconciler struct {
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
 
-func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.logger = log.FromContext(ctx)
 	r.req = &req
-	r.Httpproxy = nil
-	r.Route = &routev1.Route{}
+	r.httpproxy = nil
+	r.route = &routev1.Route{}
 
-	err := r.Get(ctx, r.req.NamespacedName, r.Route)
+	err := r.Get(ctx, r.req.NamespacedName, r.route)
 
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -77,19 +88,19 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return subreconciler.Evaluate(subreconciler.Requeue())
 	}
 
-	if utils.IsPaused(r.Route) {
+	if utils.IsPaused(r.route) {
 		r.logger.Info("ignoring paused route")
 		return subreconciler.Evaluate(subreconciler.DoNotRequeue())
 	}
 
-	isAdmitted, hasAdmissionStatus := utils.IsAdmitted(r.Route)
+	isAdmitted, hasAdmissionStatus := utils.IsAdmitted(r.route)
 	if !hasAdmissionStatus {
 		r.logger.Info("ignoring route without status")
 		return subreconciler.Evaluate(subreconciler.DoNotRequeue())
 	}
 
 	var subrecs []subreconciler.Fn
-	if !isAdmitted || utils.IsDeleted(r.Route) {
+	if !isAdmitted || utils.IsDeleted(r.route) {
 		subrecs = append(subrecs,
 			r.findHTTPProxybyOwner,
 			r.handleRouteCleanup,
@@ -115,11 +126,11 @@ func (r *RouteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 }
 
 // findHTTPProxybyOwner is a wrapper around getHTTPProxybyOwner to be used as a subreconciler.Fn
-func (r *RouteReconciler) findHTTPProxybyOwner(ctx context.Context) (*ctrl.Result, error) {
+func (r *Reconciler) findHTTPProxybyOwner(ctx context.Context) (*ctrl.Result, error) {
 	httpproxy, err := r.getHTTPProxyByOwner(ctx)
 	switch {
 	case err == nil:
-		r.Httpproxy = httpproxy
+		r.httpproxy = httpproxy
 		return subreconciler.ContinueReconciling()
 	case err == consts.NotFoundError:
 		return subreconciler.ContinueReconciling()
@@ -128,15 +139,15 @@ func (r *RouteReconciler) findHTTPProxybyOwner(ctx context.Context) (*ctrl.Resul
 	}
 }
 
-func (r *RouteReconciler) getHTTPProxyByOwner(ctx context.Context) (*contourv1.HTTPProxy, error) {
+func (r *Reconciler) getHTTPProxyByOwner(ctx context.Context) (*contourv1.HTTPProxy, error) {
 	httpproxyList := contourv1.HTTPProxyList{}
-	if err := r.List(ctx, &httpproxyList, client.InNamespace(r.Route.Namespace)); err != nil {
+	if err := r.List(ctx, &httpproxyList, client.InNamespace(r.route.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list httpproxies: %w", err)
 	}
 
 	for _, httpproxy := range httpproxyList.Items {
 		for _, ownerRef := range httpproxy.GetOwnerReferences() {
-			if ownerRef.UID == r.Route.UID {
+			if ownerRef.UID == r.route.UID {
 				return &httpproxy, nil
 			}
 		}
@@ -144,27 +155,27 @@ func (r *RouteReconciler) getHTTPProxyByOwner(ctx context.Context) (*contourv1.H
 	return nil, consts.NotFoundError
 }
 
-func (r *RouteReconciler) handleRouteCleanup(ctx context.Context) (*ctrl.Result, error) {
-	if r.Httpproxy == nil {
+func (r *Reconciler) handleRouteCleanup(ctx context.Context) (*ctrl.Result, error) {
+	if r.httpproxy == nil {
 		return subreconciler.ContinueReconciling()
 	}
 
-	sameHostRoutes, err := r.getSameHostRoutes(ctx, r.Httpproxy.Namespace, r.Httpproxy.Spec.VirtualHost.Fqdn)
+	sameHostRoutes, err := r.getSameHostRoutes(ctx, r.httpproxy.Namespace, r.httpproxy.Spec.VirtualHost.Fqdn)
 	if err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to get routes with the same host: %w", err))
 	}
 	if len(sameHostRoutes) == 0 {
-		if err := r.Delete(ctx, r.Httpproxy); err != nil {
+		if err := r.Delete(ctx, r.httpproxy); err != nil {
 			return subreconciler.RequeueWithError(fmt.Errorf("failed to delete httpproxy: %w", err))
 		}
 		return subreconciler.ContinueReconciling()
 	}
 
 	// remove current object from ownerReferences and set the oldest route as owner
-	if err := utils.RemoveOwnerReference(r.Route, r.Httpproxy, r.Scheme); err != nil {
+	if err := utils.RemoveOwnerReference(r.route, r.httpproxy, r.scheme); err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to remove owner reference: %w", err))
 	}
-	if err := utils.SetControllerReference(&sameHostRoutes[0], r.Httpproxy, r.Scheme); err != nil {
+	if err := utils.SetControllerReference(&sameHostRoutes[0], r.httpproxy, r.scheme); err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to set controller owner reference: %w", err))
 	}
 
@@ -173,7 +184,7 @@ func (r *RouteReconciler) handleRouteCleanup(ctx context.Context) (*ctrl.Result,
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to assemble httpproxy: %w", err))
 	}
 
-	httpproxy.ObjectMeta = *r.Httpproxy.ObjectMeta.DeepCopy()
+	httpproxy.ObjectMeta = *r.httpproxy.ObjectMeta.DeepCopy()
 
 	if err := r.Update(ctx, httpproxy); err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to update httpproxy: %w", err))
@@ -183,43 +194,43 @@ func (r *RouteReconciler) handleRouteCleanup(ctx context.Context) (*ctrl.Result,
 
 // handleHostMismatch will call handleRouteCleanup if the fqdn of the httpproxy doesn't
 // match the host of the route
-func (r *RouteReconciler) handleHostMismatch(ctx context.Context) (*ctrl.Result, error) {
-	if r.Httpproxy == nil {
+func (r *Reconciler) handleHostMismatch(ctx context.Context) (*ctrl.Result, error) {
+	if r.httpproxy == nil {
 		return subreconciler.ContinueReconciling()
 	}
 
-	if r.Httpproxy.Spec.VirtualHost != nil &&
-		r.Httpproxy.Spec.VirtualHost.Fqdn != r.Route.Spec.Host {
+	if r.httpproxy.Spec.VirtualHost != nil &&
+		r.httpproxy.Spec.VirtualHost.Fqdn != r.route.Spec.Host {
 		return r.handleRouteCleanup(ctx)
 	}
 
 	return subreconciler.ContinueReconciling()
 }
 
-func (r *RouteReconciler) handleRoute(ctx context.Context) (*ctrl.Result, error) {
-	found := r.Httpproxy != nil
+func (r *Reconciler) handleRoute(ctx context.Context) (*ctrl.Result, error) {
+	found := r.httpproxy != nil
 
 	if !found {
 		httpproxyList := contourv1.HTTPProxyList{}
-		if err := r.List(ctx, &httpproxyList, client.InNamespace(r.Route.Namespace)); err != nil {
+		if err := r.List(ctx, &httpproxyList, client.InNamespace(r.route.Namespace)); err != nil {
 			return nil, fmt.Errorf("failed to list httpproxies: %w", err)
 		}
 		for _, httpproxy := range httpproxyList.Items {
-			if httpproxy.Spec.VirtualHost != nil && httpproxy.Spec.VirtualHost.Fqdn == r.Route.Spec.Host {
-				r.Httpproxy = &httpproxy
+			if httpproxy.Spec.VirtualHost != nil && httpproxy.Spec.VirtualHost.Fqdn == r.route.Spec.Host {
+				r.httpproxy = &httpproxy
 				found = true
 				break
 			}
 		}
 	}
 
-	sameHostRoutes, err := r.getSameHostRoutes(ctx, r.Route.Namespace, r.Route.Spec.Host)
+	sameHostRoutes, err := r.getSameHostRoutes(ctx, r.route.Namespace, r.route.Spec.Host)
 	if err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to get routes with the same host: %w", err))
 	}
 	if len(sameHostRoutes) == 0 {
 		if found {
-			if err := r.Delete(ctx, r.Httpproxy); err != nil {
+			if err := r.Delete(ctx, r.httpproxy); err != nil {
 				return subreconciler.RequeueWithError(fmt.Errorf("failed to delete httpproxy: %w", err))
 			}
 		}
@@ -232,13 +243,13 @@ func (r *RouteReconciler) handleRoute(ctx context.Context) (*ctrl.Result, error)
 	}
 
 	if found {
-		httpproxy.ObjectMeta = *r.Httpproxy.ObjectMeta.DeepCopy()
+		httpproxy.ObjectMeta = *r.httpproxy.ObjectMeta.DeepCopy()
 	}
 
-	if err := controllerutil.SetOwnerReference(r.Route, httpproxy, r.Scheme); err != nil {
+	if err := controllerutil.SetOwnerReference(r.route, httpproxy, r.scheme); err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to set owner reference on httpproxy : %w", err))
 	}
-	if err := utils.SetControllerReference(&sameHostRoutes[0], httpproxy, r.Scheme); err != nil {
+	if err := utils.SetControllerReference(&sameHostRoutes[0], httpproxy, r.scheme); err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to set controller owner reference: %w", err))
 	}
 
@@ -258,7 +269,7 @@ func (r *RouteReconciler) handleRoute(ctx context.Context) (*ctrl.Result, error)
 // waitForHttpproxy retries getting the httpproxy owned by the current route.
 // This wait is necessary to due to possible lag between object creation and its
 // appearance in controller-runtime's cache
-func (r *RouteReconciler) waitForHttpproxy(ctx context.Context) (*ctrl.Result, error) {
+func (r *Reconciler) waitForHttpproxy(ctx context.Context) (*ctrl.Result, error) {
 	err := retry.OnError(
 		retry.DefaultBackoff,
 		func(err error) bool {
@@ -276,29 +287,29 @@ func (r *RouteReconciler) waitForHttpproxy(ctx context.Context) (*ctrl.Result, e
 	return subreconciler.ContinueReconciling()
 }
 
-func (r *RouteReconciler) addRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
-	updated := controllerutil.AddFinalizer(r.Route, utils.RouteFinalizer)
+func (r *Reconciler) addRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
+	updated := controllerutil.AddFinalizer(r.route, utils.RouteFinalizer)
 	if !updated {
 		return subreconciler.ContinueReconciling()
 	}
-	if err := r.Update(ctx, r.Route); err != nil {
+	if err := r.Update(ctx, r.route); err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to add finalizer: %w", err))
 	}
 	return subreconciler.ContinueReconciling()
 }
 
-func (r *RouteReconciler) removeRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
-	updated := controllerutil.RemoveFinalizer(r.Route, utils.RouteFinalizer)
+func (r *Reconciler) removeRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
+	updated := controllerutil.RemoveFinalizer(r.route, utils.RouteFinalizer)
 	if !updated {
 		return subreconciler.ContinueReconciling()
 	}
-	if err := r.Update(ctx, r.Route); err != nil {
+	if err := r.Update(ctx, r.route); err != nil {
 		return subreconciler.RequeueWithError(fmt.Errorf("failed to remove finalizer: %w", err))
 	}
 	return subreconciler.ContinueReconciling()
 }
 
-func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route, sameHostRoutes []routev1.Route) (*contourv1.HTTPProxy, error) {
+func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route, sameHostRoutes []routev1.Route) (*contourv1.HTTPProxy, error) {
 	httpproxy := &contourv1.HTTPProxy{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: consts.HTTPProxyGenerateName,
@@ -384,18 +395,15 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 					},
 					LoadBalancerPolicy: loadBalancerPolicy,
 					EnableWebsockets:   true,
-				}
-
-				if routeTimeout, ok := sameRoute.Annotations[consts.AnnotTimeout]; ok {
-					httpproxyRoute.TimeoutPolicy = &contourv1.TimeoutPolicy{
-						Response: routeTimeout,
-					}
+					TimeoutPolicy: &contourv1.TimeoutPolicy{
+						Response: utils.GetTimeout(&sameRoute, r.cfg.DefaultTimeout),
+					},
 				}
 
 				rateLimitEnabled, rateLimit := utils.GetRateLimit(&sameRoute)
 				if rateLimitEnabled {
 					// haproxy router uses 10s window size while we have 1s, 1m, 1h windows in contour
-					contourRate := uint32(rateLimit * r.RouterToContourRatio * 6)
+					contourRate := uint32(rateLimit * r.cfg.RouterToContourRatio * 6)
 
 					httpproxyRoute.RateLimitPolicy = &contourv1.RateLimitPolicy{
 						Local: &contourv1.LocalRateLimitPolicy{
@@ -434,7 +442,7 @@ func (r *RouteReconciler) assembleHttpproxy(ctx context.Context, owner *routev1.
 	return httpproxy, nil
 }
 
-func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Route) ([]int, error) {
+func (r *Reconciler) getTargetPorts(ctx context.Context, route *routev1.Route) ([]int, error) {
 	var ports []int
 
 	targetPortName := ""
@@ -467,7 +475,7 @@ func (r *RouteReconciler) getTargetPorts(ctx context.Context, route *routev1.Rou
 	return ports, nil
 }
 
-func (r *RouteReconciler) getTLSSecretByOwner(ctx context.Context, route *routev1.Route) (*corev1.Secret, error) {
+func (r *Reconciler) getTLSSecretByOwner(ctx context.Context, route *routev1.Route) (*corev1.Secret, error) {
 	secretList := &corev1.SecretList{}
 	if err := r.List(ctx, secretList, client.InNamespace(route.Namespace)); err != nil {
 		return nil, err
@@ -483,7 +491,7 @@ func (r *RouteReconciler) getTLSSecretByOwner(ctx context.Context, route *routev
 	return nil, consts.NotFoundError
 }
 
-func (r *RouteReconciler) ensureTLSSecret(ctx context.Context, route *routev1.Route) error {
+func (r *Reconciler) ensureTLSSecret(ctx context.Context, route *routev1.Route) error {
 	existingSecret, err := r.getTLSSecretByOwner(ctx, route)
 	switch {
 	case err == nil:
@@ -498,7 +506,7 @@ func (r *RouteReconciler) ensureTLSSecret(ctx context.Context, route *routev1.Ro
 		return nil
 	case err == consts.NotFoundError:
 		secret := r.assembleTLSSecret(route)
-		if err := controllerutil.SetControllerReference(route, secret, r.Scheme); err != nil {
+		if err := controllerutil.SetControllerReference(route, secret, r.scheme); err != nil {
 			return fmt.Errorf("failed to set controller owner on secret: %w", err)
 		}
 		if err := r.Create(ctx, secret); err != nil {
@@ -510,12 +518,12 @@ func (r *RouteReconciler) ensureTLSSecret(ctx context.Context, route *routev1.Ro
 	}
 }
 
-func (r *RouteReconciler) removeTLSSecret(ctx context.Context) (*ctrl.Result, error) {
-	if r.Route.Spec.TLS == nil || r.Route.Spec.TLS.Key == "" {
+func (r *Reconciler) removeTLSSecret(ctx context.Context) (*ctrl.Result, error) {
+	if r.route.Spec.TLS == nil || r.route.Spec.TLS.Key == "" {
 		return nil, nil
 	}
 
-	existingSecret, err := r.getTLSSecretByOwner(ctx, r.Route)
+	existingSecret, err := r.getTLSSecretByOwner(ctx, r.route)
 	switch {
 	case err == nil:
 		if err := r.Delete(ctx, existingSecret); err != nil {
@@ -529,7 +537,7 @@ func (r *RouteReconciler) removeTLSSecret(ctx context.Context) (*ctrl.Result, er
 	}
 }
 
-func (r *RouteReconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
+func (r *Reconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:    route.Namespace,
@@ -545,7 +553,7 @@ func (r *RouteReconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret
 
 // getSameHostRoutes returns routes with the same host as the given route in the same namespace
 // the routes are sorted in ascending order by .metadata.creationTimestamp field
-func (r *RouteReconciler) getSameHostRoutes(ctx context.Context, namespace, host string) ([]routev1.Route, error) {
+func (r *Reconciler) getSameHostRoutes(ctx context.Context, namespace, host string) ([]routev1.Route, error) {
 	sameHostRouteList := &routev1.RouteList{}
 	if err := r.List(ctx, sameHostRouteList, client.InNamespace(namespace), client.MatchingFields{
 		"spec.host": host,

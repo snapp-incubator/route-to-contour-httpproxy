@@ -13,7 +13,9 @@ RUN go mod download
 
 # Copy the go source
 COPY cmd/main.go cmd/main.go
-COPY internal/controller/ internal/controller/
+COPY hack/config.yaml hack/config.yaml
+COPY cmd/main.go cmd/main.go
+COPY internal/ internal/
 COPY pkg/ pkg/
 
 # Build
