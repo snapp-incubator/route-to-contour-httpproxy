@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: route-to-httpproxy-config
-  namespace: route-to-contour-httpproxy-system
-data:
-  ROUTER_CONTOUR_RATIO: 1

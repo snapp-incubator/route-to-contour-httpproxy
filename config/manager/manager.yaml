@@ -70,9 +70,9 @@ spec:
         - /manager
         args:
         - --leader-elect
-        envFrom:
-          - configMapRef:
-              name: route-to-httpproxy-config
+        env:
+          - name: ROUTER_CONTOUR_RATIO
+            value: "1"
         image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:1.2.6
         name: manager
         livenessProbe:
