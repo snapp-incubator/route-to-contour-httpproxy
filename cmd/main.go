@@ -19,8 +19,8 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
-	"strconv"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/route"
 	//+kubebuilder:scaffold:imports
 )
@@ -53,41 +54,31 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
-func getIntEnv(name string, defaultValue int) int {
-	strValue := os.Getenv(name)
-	if strValue == "" {
-		return defaultValue
-	}
-
-	value, err := strconv.Atoi(strValue)
-	if err != nil {
-		return defaultValue
-	}
-
-	return value
-}
-
 func main() {
 	var (
 		metricsAddr          string
 		enableLeaderElection bool
 		probeAddr            string
-		// The ratio of the count of router nodes to the count of contour nodes
-		routerToContourRatio int
+		configPath           string
 	)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-
-	routerToContourRatio = getIntEnv("ROUTER_CONTOUR_RATIO", 1)
-
+	flag.StringVar(&configPath, "config", "hack/config.yaml", "Path to config file.")
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	cfg, err := config.GetConfig(configPath)
+	if err != nil {
+		fmt.Println(err)
+		setupLog.Error(err, "failed to get config")
+		os.Exit(1)
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -127,12 +118,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&route.RouteReconciler{
-		Client:               mgr.GetClient(),
-		Scheme:               mgr.GetScheme(),
-		RouterToContourRatio: routerToContourRatio,
-		Route:                &routev1.Route{},
-	}).SetupWithManager(mgr); err != nil {
+	routeReconciler := route.NewReconciler(mgr, cfg)
+
+	if err = routeReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Route")
 		os.Exit(1)
 	}

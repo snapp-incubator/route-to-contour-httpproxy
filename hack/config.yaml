@@ -1,0 +1,5 @@
+routeToContourRatio: 1
+defaultTimeout:
+  publicClass: 5s
+  interDcClass: 5s
+  defaultClass: 30s

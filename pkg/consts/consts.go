@@ -22,8 +22,11 @@ const (
 
 	RateLimitUnitMinute = "minute"
 
-	RouteShardLabel         = "router"
-	DefaultIngressClassName = "private"
+	IngressClassPrivate = "private"
+	IngressClassInterDc = "inter-dc"
+	IngressClassPublic  = "public"
+
+	RouteShardLabel = "router"
 
 	StrategyCookie               = "Cookie"
 	StrategyRandom               = "Random"

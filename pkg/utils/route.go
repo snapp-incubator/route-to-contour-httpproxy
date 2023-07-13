@@ -9,6 +9,7 @@ import (
 	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
 	v1 "k8s.io/api/core/v1"
 
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 )
 
@@ -43,11 +44,16 @@ func IsAdmitted(route *routev1.Route) (admitted, hasAdmissionStatus bool) {
 }
 
 func GetIngressClass(route *routev1.Route) string {
-	ingressClass, ok := route.Labels[consts.RouteShardLabel]
-	if !ok {
-		ingressClass = consts.DefaultIngressClassName
+	ingressClass := route.Labels[consts.RouteShardLabel]
+
+	switch ingressClass {
+	case consts.IngressClassPublic:
+		return consts.IngressClassPublic
+	case consts.IngressClassInterDc:
+		return consts.IngressClassInterDc
+	default:
+		return consts.IngressClassPrivate
 	}
-	return ingressClass
 }
 
 func GetIPWhitelist(route *routev1.Route) []contourv1.IPFilterPolicy {
@@ -110,4 +116,19 @@ func GetRateLimit(route *routev1.Route) (bool, int) {
 	}
 
 	return rateLimit, rateLimitHttpRate
+}
+
+func GetTimeout(route *routev1.Route, defaultTimeout config.DefaultTimeout) string {
+	if timeout, ok := route.Annotations[consts.AnnotTimeout]; ok {
+		return timeout
+	}
+
+	switch GetIngressClass(route) {
+	case consts.IngressClassPublic:
+		return defaultTimeout.PublicClass
+	case consts.IngressClassInterDc:
+		return defaultTimeout.InterDcClass
+	default:
+		return defaultTimeout.DefaultClass
+	}
 }

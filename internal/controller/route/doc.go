@@ -1,6 +1,6 @@
 package route
 
-// RouteReconciler is responsible for creating proper projectcontour.io/v1/HTTPProxy objects based on the existing
+// Reconciler is responsible for creating proper projectcontour.io/v1/HTTPProxy objects based on the existing
 // route.openshift.io/v1/Route objects
 
 // Overall Flow:

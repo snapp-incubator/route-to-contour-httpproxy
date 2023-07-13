@@ -70,10 +70,11 @@ spec:
         - /manager
         args:
         - --leader-elect
-        env:
-          - name: ROUTER_CONTOUR_RATIO
-            value: "1"
-        image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:1.2.6
+        - --config=/route-to-contour-httpproxy/config/config.yaml
+        volumeMounts:
+          - mountPath: /route-to-contour-httpproxy/config/
+            name: config-volume
+        image: ghcr.io/snapp-incubator/route-to-contour-httpproxy:latest
         name: manager
         livenessProbe:
           httpGet:
@@ -96,5 +97,12 @@ spec:
           requests:
             cpu: '1'
             memory: 2Gi
+      volumes:
+        - name: config-volume
+          configMap:
+            name: controller-manager-config
+            items:
+              - key: config.yaml
+                path: config.yaml
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
