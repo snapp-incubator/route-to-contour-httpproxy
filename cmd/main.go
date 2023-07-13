@@ -66,7 +66,12 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.StringVar(&configPath, "config", "hack/config.yaml", "[Required] Path to config file.")
+	flag.StringVar(&configPath, "config", "hack/config.yaml", "Path to config file.")
+	opts := zap.Options{
+		Development: true,
+	}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
 
 	cfg, err := config.GetConfig(configPath)
 	if err != nil {
@@ -74,12 +79,6 @@ func main() {
 		setupLog.Error(err, "failed to get config")
 		os.Exit(1)
 	}
-
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
