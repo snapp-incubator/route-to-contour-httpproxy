@@ -108,6 +108,8 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			Expect(err).To(BeNil())
 
 			// wait 1s to make sure the route is deleted properly
+			time.Sleep(1 * time.Second)
+
 		})
 
 		It("should exit with no error when the pause label is set, no object should be created", func() {
