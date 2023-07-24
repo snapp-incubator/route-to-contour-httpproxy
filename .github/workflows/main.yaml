@@ -17,12 +17,20 @@ jobs:
         with:
           version: latest
           args: --timeout 5m
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: run tests using make
+        run: make test
   docker:
     name: docker
     if: startsWith(github.event.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     needs:
       - lint
+      - test
     steps:
       - uses: actions/checkout@v3
       - uses: docker/setup-qemu-action@v2
