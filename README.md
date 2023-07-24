@@ -50,6 +50,20 @@ It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controlle
 which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the
 cluster.
 
+### Running Tests
+
+1. Make sure the sample config exists first.
+
+```shell
+ls -l hack/config.yaml
+```
+
+2. Run the tests defined inside Makefile. These tests run on envtest, so you don't need to connect to a working cluster.
+
+```shell
+make test
+```
+
 ### Test It Out
 
 1. Run the controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):

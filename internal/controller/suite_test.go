@@ -17,11 +17,23 @@ limitations under the License.
 package controller
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	routev1 "github.com/openshift/api/route/v1"
+	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
+	"k8s.io/client-go/kubernetes"
+	ctrl "sigs.k8s.io/controller-runtime"
+
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/route"
+
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
+
+	"fmt"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -50,8 +62,10 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: false,
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "external-crd"),
+		},
+		ErrorIfCRDPathMissing: true,
 	}
 
 	var err error
@@ -60,16 +74,59 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
+	err = routev1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = contourv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	K8sClientSet, err := kubernetes.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(K8sClientSet).NotTo(BeNil())
+
+	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+	})
+	Expect(err).ToNot(HaveOccurred())
+	Expect(k8sManager).NotTo(BeNil())
+
+	if err := k8sManager.GetFieldIndexer().IndexField(
+		context.Background(),
+		&routev1.Route{},
+		"spec.host",
+		func(object client.Object) []string {
+			r := object.(*routev1.Route)
+			return []string{r.Spec.Host}
+		}); err != nil {
+		fmt.Println(err, "failed to create index for .spec.host", "controller", "Route")
+		os.Exit(1)
+	}
+
+	cfg, err := config.GetConfig("../../hack/config.yaml")
+	if err != nil {
+		fmt.Println(err, "failed to get config")
+		os.Exit(1)
+	}
+
+	routeReconcileObj := route.NewReconciler(k8sManager, cfg)
+	err = (routeReconcileObj).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	go func() {
+		err = k8sManager.Start(ctrl.SetupSignalHandler())
+		Expect(err).ToNot(HaveOccurred())
+	}()
+
 })
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
-	err := testEnv.Stop()
-	Expect(err).NotTo(HaveOccurred())
+	_ = testEnv.Stop()
+	Expect(testEnv.Stop()).To(Succeed())
 })

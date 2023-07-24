@@ -132,3 +132,7 @@ func GetTimeout(route *routev1.Route, defaultTimeout config.DefaultTimeout) stri
 		return defaultTimeout.DefaultClass
 	}
 }
+
+func CalculateRateLimit(ratio, rateLimit int) uint32 {
+	return uint32(rateLimit * ratio * 6)
+}
