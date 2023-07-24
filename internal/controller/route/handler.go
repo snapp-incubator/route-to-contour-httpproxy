@@ -554,7 +554,6 @@ func (r *Reconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
 // the routes are sorted in ascending order by .metadata.creationTimestamp field
 func (r *Reconciler) getSameHostRoutes(ctx context.Context, namespace, host string) ([]routev1.Route, error) {
 	sameHostRouteList := &routev1.RouteList{}
-
 	if err := r.List(ctx, sameHostRouteList, client.InNamespace(namespace), client.MatchingFields{
 		"spec.host": host,
 	}); err != nil {
