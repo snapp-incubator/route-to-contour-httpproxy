@@ -59,7 +59,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 		os.Exit(1)
 	}
 
-	Context("Testing Reconcile loop functionality", func() {
+	Context("Testing Reconcile loop functionality", Serial, func() {
 		BeforeEach(func() {
 			// Create Service
 			objService := v12.Service{
