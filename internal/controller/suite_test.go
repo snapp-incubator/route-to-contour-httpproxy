@@ -18,18 +18,22 @@ package controller
 
 import (
 	"context"
-	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	routev1 "github.com/openshift/api/route/v1"
 	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
-	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
-	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/route"
 	"k8s.io/client-go/kubernetes"
-	"os"
-	"path/filepath"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"testing"
+
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/route"
+
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
+
+	"fmt"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"

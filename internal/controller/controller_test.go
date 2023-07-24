@@ -1,26 +1,29 @@
 package controller
 
 import (
-	"context"
-	"fmt"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/utils"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	routev1 "github.com/openshift/api/route/v1"
 	contourv1 "github.com/projectcontour/contour/apis/projectcontour/v1"
-	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/utils"
+	v12 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"context"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
-	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
-	v12 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
+
+	"fmt"
 )
 
 const (

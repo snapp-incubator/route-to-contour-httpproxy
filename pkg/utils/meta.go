@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -9,6 +8,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+
+	"fmt"
 )
 
 const (
