@@ -555,10 +555,6 @@ func (r *Reconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
 func (r *Reconciler) getSameHostRoutes(ctx context.Context, namespace, host string) ([]routev1.Route, error) {
 	sameHostRouteList := &routev1.RouteList{}
 
-	if err := r.List(ctx, sameHostRouteList, client.InNamespace(namespace)); err != nil {
-		return nil, err
-	}
-
 	if err := r.List(ctx, sameHostRouteList, client.InNamespace(namespace), client.MatchingFields{
 		"spec.host": host,
 	}); err != nil {
