@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -11,9 +12,6 @@ import (
 )
 
 const (
-	AnnotationKeyPrefix               = "snappcloud.io/"
-	AnnotationKeyReconciliationPaused = AnnotationKeyPrefix + "paused"
-
 	RouteFinalizer = "snappcloud.io/wait-for-httpproxy-cleanup"
 )
 
@@ -27,7 +25,7 @@ func IsPaused(obj metav1.Object) bool {
 	if annotations == nil {
 		return false
 	}
-	_, ok := annotations[AnnotationKeyReconciliationPaused]
+	_, ok := annotations[consts.AnnotationKeyReconciliationPaused]
 	return ok
 }
 

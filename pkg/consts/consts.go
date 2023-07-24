@@ -16,6 +16,9 @@ const (
 	AnnotIPWhitelist       = haproxyAnnotationPrefix + "ip_whitelist"
 	AnnotDisableCookies    = haproxyAnnotationPrefix + "disable_cookies"
 
+	AnnotationKeyPrefix               = "snappcloud.io/"
+	AnnotationKeyReconciliationPaused = AnnotationKeyPrefix + "paused"
+
 	TLSSecretNS         = "openshift-ingress"
 	TLSSecretName       = "letsencrypt"
 	GlobalTLSSecretName = TLSSecretNS + "/" + TLSSecretName

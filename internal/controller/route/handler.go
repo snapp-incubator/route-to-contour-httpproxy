@@ -326,11 +326,11 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 
 	if owner.Spec.TLS != nil {
 		switch owner.Spec.TLS.Termination {
-		case "passthrough":
+		case routev1.TLSTerminationPassthrough:
 			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
 				Passthrough: true,
 			}
-		case "edge", "reencrypt":
+		case routev1.TLSTerminationEdge, routev1.TLSTerminationReencrypt:
 			var secretName string
 			if owner.Spec.TLS.Key != "" {
 				err := r.ensureTLSSecret(ctx, owner)
@@ -355,7 +355,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 	}
 
 	// use `tcpproxy` for passthrough mode and `routes` for other termination modes
-	if owner.Spec.TLS != nil && owner.Spec.TLS.Termination == "passthrough" {
+	if owner.Spec.TLS != nil && owner.Spec.TLS.Termination == routev1.TLSTerminationPassthrough {
 		httpproxy.Spec.TCPProxy = &contourv1.TCPProxy{}
 		for _, sameRoute := range sameHostRoutes {
 			ports, err := r.getTargetPorts(ctx, &sameRoute)
@@ -402,8 +402,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 
 				rateLimitEnabled, rateLimit := utils.GetRateLimit(&sameRoute)
 				if rateLimitEnabled {
-					// haproxy router uses 10s window size while we have 1s, 1m, 1h windows in contour
-					contourRate := uint32(rateLimit * r.cfg.RouterToContourRatio * 6)
+					contourRate := utils.CalculateRateLimit(r.cfg.RouterToContourRatio, rateLimit)
 
 					httpproxyRoute.RateLimitPolicy = &contourv1.RateLimitPolicy{
 						Local: &contourv1.LocalRateLimitPolicy{
@@ -555,6 +554,11 @@ func (r *Reconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
 // the routes are sorted in ascending order by .metadata.creationTimestamp field
 func (r *Reconciler) getSameHostRoutes(ctx context.Context, namespace, host string) ([]routev1.Route, error) {
 	sameHostRouteList := &routev1.RouteList{}
+
+	if err := r.List(ctx, sameHostRouteList, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+
 	if err := r.List(ctx, sameHostRouteList, client.InNamespace(namespace), client.MatchingFields{
 		"spec.host": host,
 	}); err != nil {
