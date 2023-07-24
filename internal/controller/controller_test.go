@@ -107,8 +107,8 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			}
 			Expect(err).To(BeNil())
 
-			// wait 1s to make sure the route is deleted properly
-			time.Sleep(1 * time.Second)
+			// wait 3s to make sure the route is deleted properly
+			time.Sleep(3 * time.Second)
 
 		})
 
@@ -289,7 +289,6 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 						consts.RouteShardLabel: RouterName,
 					},
 					Annotations: map[string]string{
-						//consts.AnnotTimeout:        RouteTimeout,
 						consts.AnnotBalance:        "roundrobin",
 						consts.AnnotDisableCookies: "true",
 					},
