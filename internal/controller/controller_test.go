@@ -27,33 +27,28 @@ import (
 )
 
 const (
-	APIVersionRoute   = "route.openshift.io/v1"
-	APIVersionService = "v1"
-	KindRoute         = "Route"
-	KindService       = "Service"
-	DefaultNamespace  = "default"
-	RouterName        = "default"
-	RouteTimeout      = "120s"
+	KindService      = "Service"
+	DefaultNamespace = "default"
+	RouterName       = "default"
+	RouteTimeout     = "120s"
 
-	ServiceFooName             = "foo"
-	RouteFooName               = "foo"
-	RouteBarName               = "bar"
-	RouteFooFQDN               = "test.apps.example.com"
-	RouteFooNewFQDN            = "test2.apps.example.com"
-	RouteBarFQDN               = "test.apps.example.com"
-	RouteBarPath               = "/bar"
-	RouteFooWildCardPolicyType = "None"
+	FirstServiceName             = "foo"
+	FirstRouteName               = "foo"
+	SecondRouteName              = "bar"
+	FirstRouteFQDN               = "test.apps.example.com"
+	FirstRouteUpdatedFQDN        = "test2.apps.example.com"
+	SecondRouteFQDN              = "test.apps.example.com"
+	SecondRoutePath              = "/test"
+	FirstRouteWildCardPolicyType = "None"
 
 	RateLimitRequests = 100
 	RouteIPWhiteList  = "1.1.1.1 8.8.8.8"
 )
 
 var (
-	err             error
-	ServiceWeight   int32 = 100
-	ServiceFooPorts       = []v12.ServicePort{{Name: "https", Port: 443}}
-	RouterTypeMeta        = v1.TypeMeta{Kind: KindRoute, APIVersion: APIVersionRoute}
-	ServiceTypeMeta       = v1.TypeMeta{Kind: KindService, APIVersion: APIVersionService}
+	err               error
+	ServiceWeight     int32 = 100
+	FirstServicePorts       = []v12.ServicePort{{Name: "https", Port: 443}}
 )
 
 var _ = Describe("Testing Route to HTTPProxy Controller", func() {
@@ -67,13 +62,12 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 		BeforeEach(func() {
 			// Create Service
 			objService := v12.Service{
-				TypeMeta: ServiceTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      ServiceFooName,
+					Name:      FirstServiceName,
 				},
 				Spec: v12.ServiceSpec{
-					Ports: ServiceFooPorts,
+					Ports: FirstServicePorts,
 					Type:  v12.ServiceTypeClusterIP,
 					Selector: map[string]string{
 						"app": "test",
@@ -91,13 +85,12 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 		AfterEach(func() {
 			// Delete Service
 			objService := v12.Service{
-				TypeMeta: ServiceTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      ServiceFooName,
+					Name:      FirstServiceName,
 				},
 				Spec: v12.ServiceSpec{
-					Ports: ServiceFooPorts,
+					Ports: FirstServicePorts,
 					Type:  v12.ServiceTypeClusterIP,
 					Selector: map[string]string{
 						"app": "test",
@@ -118,10 +111,9 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 
 		It("should exit with no error when the pause label is set, no object should be created", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -131,20 +123,19 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
 			objRoute.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
@@ -159,28 +150,23 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &objRoute)).To(Succeed())
 
-			tt := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &tt)
-			Expect(err).To(BeNil())
+			fetchRouteFromCluster := routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchRouteFromCluster)).To(Succeed())
 
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(0))
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 		})
 
 		It("should exit with no error if the route object is not admitted", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -189,40 +175,35 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
-			tt := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &tt)
-			Expect(err).To(BeNil())
+			fetchRouteFromCluster := routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchRouteFromCluster)).To(Succeed())
 
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(0))
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 		})
 
 		It("should create HTTPProxy object when everything is alright", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -231,20 +212,19 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
 			objRoute.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
@@ -259,36 +239,30 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &objRoute)).To(Succeed())
 
 			rObj := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObj)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooFQDN))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
 			Expect(httpProxyList.Items[0].Spec.Routes[0].TimeoutPolicy.Response).To(Equal(RouteTimeout))
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 
 			httpProxyList = contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 		})
 
 		It("should create HTTPProxy object with custom load balancer algorithm (note: this case only tests the algorithm)", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -298,20 +272,19 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
 			objRoute.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
@@ -326,30 +299,25 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &objRoute)).To(Succeed())
 
 			rObj := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObj)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 			Expect(httpProxyList.Items[0].Spec.Routes[0].LoadBalancerPolicy.Strategy).To(Equal(consts.StrategyRoundRobin))
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 		})
 
 		It("should create HTTPProxy object with rate limit enabled (note: this case only tests the rate limit)", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -360,20 +328,19 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
 			objRoute.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
@@ -388,30 +355,25 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &objRoute)).To(Succeed())
 
 			rObj := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObj)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 			Expect(httpProxyList.Items[0].Spec.Routes[0].RateLimitPolicy.Local.Requests).To(Equal(utils.CalculateRateLimit(cfg.RouterToContourRatio, RateLimitRequests)))
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 		})
 
 		It("should create HTTPProxy object with ip whitelist enabled (note: this case only tests the whitelist)", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -421,20 +383,19 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
 			objRoute.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
@@ -449,17 +410,14 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &objRoute)).To(Succeed())
 
 			rObj := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObj)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 			Expect(httpProxyList.Items[0].Spec.Routes[0].IPAllowFilterPolicy).NotTo(BeNil())
 			for _, ipWhiteList := range strings.Split(RouteIPWhiteList, " ") {
@@ -475,38 +433,35 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 				Expect(found).To(BeTrue())
 			}
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 		})
 
 		It("should create HTTPProxy with TCPProxy when tls is pass through (note: this case only test services on TCPProxy", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 					TLS: &routev1.TLSConfig{
 						Termination: routev1.TLSTerminationPassthrough,
 					},
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
 			objRoute.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
@@ -521,53 +476,47 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &objRoute)).To(Succeed())
 
 			rObj := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObj)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(BeNil())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 			Expect(len(httpProxyList.Items[0].Spec.TCPProxy.Services)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.TCPProxy.Services[0].Name).To(Equal(ServiceFooName))
+			Expect(httpProxyList.Items[0].Spec.TCPProxy.Services[0].Name).To(Equal(FirstServiceName))
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 		})
 
 		It("should create HTTPProxy with TCPProxy when tls is edge (note: this case only tests tls related configs", func() {
 			objRoute := routev1.Route{
-				TypeMeta: RouterTypeMeta,
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 					TLS: &routev1.TLSConfig{
 						Termination: routev1.TLSTerminationEdge,
 					},
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &objRoute)).To(Succeed())
 
 			objRoute.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
@@ -582,30 +531,25 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &objRoute)).To(Succeed())
 
 			rObj := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObj)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 			Expect(httpProxyList.Items[0].Spec.VirtualHost.TLS.SecretName).To(Equal(consts.GlobalTLSSecretName))
 
-			err = k8sClient.Delete(context.Background(), &objRoute)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &objRoute)).To(Succeed())
 		})
 
 		It("should create one HTTPProxy object when multiple routes with different hosts exist", func() {
-			objRouteFoo := routev1.Route{
-				TypeMeta: RouterTypeMeta,
+			firstRouteObj := routev1.Route{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -614,26 +558,24 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &firstRouteObj)).To(Succeed())
 
-			objRouteBar := routev1.Route{
-				TypeMeta: RouterTypeMeta,
+			secondRouteObj := routev1.Route{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteBarName,
+					Name:      SecondRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -642,23 +584,22 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteBarFQDN,
-					Path: RouteBarPath,
+					Host: SecondRouteFQDN,
+					Path: SecondRoutePath,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRouteBar)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &secondRouteObj)).To(Succeed())
 
-			objRouteFoo.Status = routev1.RouteStatus{
+			firstRouteObj.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
 						RouterName: RouterName,
@@ -671,10 +612,9 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &firstRouteObj)).To(Succeed())
 
-			objRouteBar.Status = routev1.RouteStatus{
+			secondRouteObj.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
 						RouterName: RouterName,
@@ -687,42 +627,33 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRouteBar)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &secondRouteObj)).To(Succeed())
 
-			rObjFoo := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
-			Expect(err).To(BeNil())
+			fetchFirstRouteFromCluster := routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
 
-			rObjBar := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteBarName}, &rObjBar)
-			Expect(err).To(BeNil())
+			fetchSecondRouteFromCluster := routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: SecondRouteName}, &fetchSecondRouteFromCluster)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooFQDN))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
 
-			err = k8sClient.Delete(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
-
-			err = k8sClient.Delete(context.Background(), &objRouteBar)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &firstRouteObj)).To(Succeed())
+			Expect(k8sClient.Delete(context.Background(), &secondRouteObj)).To(Succeed())
 
 			httpProxyList = contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 		})
 
-		It("should create new HTTPProxy object when the router host is changed, and the older HTTPProxy should get deleted", func() {
-			objRouteFoo := routev1.Route{
-				TypeMeta: RouterTypeMeta,
+		It("Should remove the HTTPProxy object and create a new one when the host of the route is changed", func() {
+			firstRouteObj := routev1.Route{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -731,22 +662,21 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &firstRouteObj)).To(Succeed())
 
-			objRouteFoo.Status = routev1.RouteStatus{
+			firstRouteObj.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
 						RouterName: RouterName,
@@ -759,30 +689,24 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &firstRouteObj)).To(Succeed())
 
-			rObjFoo := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
-			Expect(err).To(BeNil())
+			fetchFirstRouteFromCluster := routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooFQDN))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
 
-			rObjFoo = routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
-			Expect(err).To(BeNil())
-			rObjFoo.Spec.Host = RouteFooNewFQDN
-			err = k8sClient.Update(context.Background(), &rObjFoo)
-			Expect(err).To(BeNil())
-			rObjFoo = routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
-			Expect(err).To(BeNil())
-			rObjFoo.Status = routev1.RouteStatus{
+			fetchFirstRouteFromCluster = routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
+			fetchFirstRouteFromCluster.Spec.Host = FirstRouteUpdatedFQDN
+			Expect(k8sClient.Update(context.Background(), &fetchFirstRouteFromCluster)).To(Succeed())
+			fetchFirstRouteFromCluster = routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
+			fetchFirstRouteFromCluster.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
 						RouterName: RouterName,
@@ -795,33 +719,28 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &rObjFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &fetchFirstRouteFromCluster)).To(Succeed())
 
 			// wait for new HTTPProxy creation, and deletion of old one
 			time.Sleep(2 * time.Second)
 
 			httpProxyList = contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooNewFQDN))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteUpdatedFQDN))
 
-			err = k8sClient.Delete(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &firstRouteObj)).To(Succeed())
 
 			httpProxyList = contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
 		})
 
-		It("should create new HTTPProxy object when there are two routers and the host of older route is changed, the older HTTPProxy should change the controller reference", func() {
-			objRouteFoo := routev1.Route{
-				TypeMeta: RouterTypeMeta,
+		It("should create new HTTPProxy object when there are two routes with same host and the host of older route is changed, also, the older HTTPProxy should change the controller reference to the newer route", func() {
+			firstRouteObj := routev1.Route{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteFooName,
+					Name:      FirstRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -830,26 +749,24 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteFooFQDN,
+					Host: FirstRouteFQDN,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			err = k8sClient.Create(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &firstRouteObj)).To(Succeed())
 
-			objRouteBar := routev1.Route{
-				TypeMeta: RouterTypeMeta,
+			secondRouteObj := routev1.Route{
 				ObjectMeta: v1.ObjectMeta{
 					Namespace: DefaultNamespace,
-					Name:      RouteBarName,
+					Name:      SecondRouteName,
 					Labels: map[string]string{
 						consts.RouteShardLabel: RouterName,
 					},
@@ -858,25 +775,24 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 				Spec: routev1.RouteSpec{
-					Host: RouteBarFQDN,
-					Path: RouteBarPath,
+					Host: SecondRouteFQDN,
+					Path: SecondRoutePath,
 					Port: &routev1.RoutePort{
 						TargetPort: intstr.IntOrString{IntVal: 443},
 					},
 					To: routev1.RouteTargetReference{
-						Name:   ServiceFooName,
+						Name:   FirstServiceName,
 						Kind:   KindService,
 						Weight: &ServiceWeight,
 					},
-					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+					WildcardPolicy: routev1.WildcardPolicyType(FirstRouteWildCardPolicyType),
 				},
 			}
-			// sleep so we can make sure that foo is the older router
+			// sleep so we can make sure that first route is the older route
 			time.Sleep(1 * time.Second)
-			err = k8sClient.Create(context.Background(), &objRouteBar)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Create(context.Background(), &secondRouteObj)).To(Succeed())
 
-			objRouteFoo.Status = routev1.RouteStatus{
+			firstRouteObj.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
 						RouterName: RouterName,
@@ -889,10 +805,9 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &firstRouteObj)).To(Succeed())
 
-			objRouteBar.Status = routev1.RouteStatus{
+			secondRouteObj.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
 						RouterName: RouterName,
@@ -905,37 +820,30 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &objRouteBar)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &secondRouteObj)).To(Succeed())
 
-			rObjFoo := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
-			Expect(err).To(BeNil())
+			fetchFirstRouteFromCluster := routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
 
-			rObjBar := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteBarName}, &rObjBar)
-			Expect(err).To(BeNil())
+			fetchSecondRouteFromCluster := routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: SecondRouteName}, &fetchSecondRouteFromCluster)).To(Succeed())
 
 			time.Sleep(1 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooFQDN))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
 
 			// keep track of the HTTPProxy object
 			oldHTTPProxyName := httpProxyList.Items[0].Name
 
-			rObjFoo = routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
-			Expect(err).To(BeNil())
-			rObjFoo.Spec.Host = RouteFooNewFQDN
-			err = k8sClient.Update(context.Background(), &rObjFoo)
-			Expect(err).To(BeNil())
-			rObjFoo = routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
-			Expect(err).To(BeNil())
-			rObjFoo.Status = routev1.RouteStatus{
+			fetchFirstRouteFromCluster = routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
+			fetchFirstRouteFromCluster.Spec.Host = FirstRouteUpdatedFQDN
+			Expect(k8sClient.Update(context.Background(), &fetchFirstRouteFromCluster)).To(Succeed())
+			fetchFirstRouteFromCluster = routev1.Route{}
+			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
+			fetchFirstRouteFromCluster.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
 						RouterName: RouterName,
@@ -948,31 +856,26 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 					},
 				},
 			}
-			err = k8sClient.Status().Update(context.Background(), &rObjFoo)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Status().Update(context.Background(), &fetchFirstRouteFromCluster)).To(Succeed())
 
 			// wait for new HTTPProxy creation, and reconciliation of old one
 			time.Sleep(2 * time.Second)
 
 			httpProxyList = contourv1.HTTPProxyList{}
-			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
-			Expect(err).To(BeNil())
+			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(2))
 			for _, httpProxyObj := range httpProxyList.Items {
 				if httpProxyObj.Name == oldHTTPProxyName {
-					Expect(httpProxyObj.Spec.VirtualHost.Fqdn).To(Equal(RouteBarFQDN))
+					Expect(httpProxyObj.Spec.VirtualHost.Fqdn).To(Equal(SecondRouteFQDN))
 					Expect(len(httpProxyObj.ObjectMeta.OwnerReferences)).To(Equal(1))
-					Expect(httpProxyObj.ObjectMeta.OwnerReferences[0].Name).To(Equal(RouteBarName))
+					Expect(httpProxyObj.ObjectMeta.OwnerReferences[0].Name).To(Equal(SecondRouteName))
 				} else {
-					Expect(httpProxyObj.Spec.VirtualHost.Fqdn).To(Equal(RouteFooNewFQDN))
+					Expect(httpProxyObj.Spec.VirtualHost.Fqdn).To(Equal(FirstRouteUpdatedFQDN))
 				}
 			}
 
-			err = k8sClient.Delete(context.Background(), &objRouteFoo)
-			Expect(err).To(BeNil())
-
-			err = k8sClient.Delete(context.Background(), &objRouteBar)
-			Expect(err).To(BeNil())
+			Expect(k8sClient.Delete(context.Background(), &firstRouteObj)).To(Succeed())
+			Expect(k8sClient.Delete(context.Background(), &secondRouteObj)).To(Succeed())
 		})
 
 		It("To enable Debug mode", func() {
