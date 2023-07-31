@@ -39,6 +39,7 @@ const (
 	RouteFooName               = "foo"
 	RouteBarName               = "bar"
 	RouteFooFQDN               = "test.apps.example.com"
+	RouteFooNewFQDN            = "test2.apps.example.com"
 	RouteBarFQDN               = "test.apps.example.com"
 	RouteBarPath               = "/bar"
 	RouteFooWildCardPolicyType = "None"
@@ -694,7 +695,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			Expect(err).To(BeNil())
 
 			rObjBar := routev1.Route{}
-			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjBar)
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteBarName}, &rObjBar)
 			Expect(err).To(BeNil())
 
 			time.Sleep(1 * time.Second)
@@ -714,6 +715,264 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
 			Expect(err).To(BeNil())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
+		})
+
+		It("should create new HTTPProxy object when the router host is changed, and the older HTTPProxy should get deleted", func() {
+			objRouteFoo := routev1.Route{
+				TypeMeta: RouterTypeMeta,
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: DefaultNamespace,
+					Name:      RouteFooName,
+					Labels: map[string]string{
+						consts.RouteShardLabel: RouterName,
+					},
+					Annotations: map[string]string{
+						consts.AnnotTimeout: RouteTimeout,
+					},
+				},
+				Spec: routev1.RouteSpec{
+					Host: RouteFooFQDN,
+					Port: &routev1.RoutePort{
+						TargetPort: intstr.IntOrString{IntVal: 443},
+					},
+					To: routev1.RouteTargetReference{
+						Name:   ServiceFooName,
+						Kind:   KindService,
+						Weight: &ServiceWeight,
+					},
+					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+				},
+			}
+			err = k8sClient.Create(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			objRouteFoo.Status = routev1.RouteStatus{
+				Ingress: []routev1.RouteIngress{
+					{
+						RouterName: RouterName,
+						Conditions: []routev1.RouteIngressCondition{
+							{
+								Status: v12.ConditionStatus(v1.ConditionTrue),
+								Type:   routev1.RouteAdmitted,
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Status().Update(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			rObjFoo := routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
+			Expect(err).To(BeNil())
+
+			time.Sleep(1 * time.Second)
+			httpProxyList := contourv1.HTTPProxyList{}
+			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
+			Expect(err).To(BeNil())
+			Expect(len(httpProxyList.Items)).To(Equal(1))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooFQDN))
+
+			rObjFoo = routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
+			Expect(err).To(BeNil())
+			rObjFoo.Spec.Host = RouteFooNewFQDN
+			err = k8sClient.Update(context.Background(), &rObjFoo)
+			Expect(err).To(BeNil())
+			rObjFoo = routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
+			Expect(err).To(BeNil())
+			rObjFoo.Status = routev1.RouteStatus{
+				Ingress: []routev1.RouteIngress{
+					{
+						RouterName: RouterName,
+						Conditions: []routev1.RouteIngressCondition{
+							{
+								Status: v12.ConditionStatus(v1.ConditionTrue),
+								Type:   routev1.RouteAdmitted,
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Status().Update(context.Background(), &rObjFoo)
+			Expect(err).To(BeNil())
+
+			// wait for new HTTPProxy creation, and deletion of old one
+			time.Sleep(2 * time.Second)
+
+			httpProxyList = contourv1.HTTPProxyList{}
+			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
+			Expect(err).To(BeNil())
+			Expect(len(httpProxyList.Items)).To(Equal(1))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooNewFQDN))
+
+			err = k8sClient.Delete(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			httpProxyList = contourv1.HTTPProxyList{}
+			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
+			Expect(err).To(BeNil())
+			Expect(len(httpProxyList.Items)).To(Equal(1))
+		})
+
+		It("should create new HTTPProxy object when there are two routers and the host of older route is changed, the older HTTPProxy should change the controller reference", func() {
+			objRouteFoo := routev1.Route{
+				TypeMeta: RouterTypeMeta,
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: DefaultNamespace,
+					Name:      RouteFooName,
+					Labels: map[string]string{
+						consts.RouteShardLabel: RouterName,
+					},
+					Annotations: map[string]string{
+						consts.AnnotTimeout: RouteTimeout,
+					},
+				},
+				Spec: routev1.RouteSpec{
+					Host: RouteFooFQDN,
+					Port: &routev1.RoutePort{
+						TargetPort: intstr.IntOrString{IntVal: 443},
+					},
+					To: routev1.RouteTargetReference{
+						Name:   ServiceFooName,
+						Kind:   KindService,
+						Weight: &ServiceWeight,
+					},
+					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+				},
+			}
+			err = k8sClient.Create(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			objRouteBar := routev1.Route{
+				TypeMeta: RouterTypeMeta,
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: DefaultNamespace,
+					Name:      RouteBarName,
+					Labels: map[string]string{
+						consts.RouteShardLabel: RouterName,
+					},
+					Annotations: map[string]string{
+						consts.AnnotTimeout: RouteTimeout,
+					},
+				},
+				Spec: routev1.RouteSpec{
+					Host: RouteBarFQDN,
+					Path: RouteBarPath,
+					Port: &routev1.RoutePort{
+						TargetPort: intstr.IntOrString{IntVal: 443},
+					},
+					To: routev1.RouteTargetReference{
+						Name:   ServiceFooName,
+						Kind:   KindService,
+						Weight: &ServiceWeight,
+					},
+					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+				},
+			}
+			// sleep so we can make sure that foo is the older router
+			time.Sleep(1 * time.Second)
+			err = k8sClient.Create(context.Background(), &objRouteBar)
+			Expect(err).To(BeNil())
+
+			objRouteFoo.Status = routev1.RouteStatus{
+				Ingress: []routev1.RouteIngress{
+					{
+						RouterName: RouterName,
+						Conditions: []routev1.RouteIngressCondition{
+							{
+								Status: v12.ConditionStatus(v1.ConditionTrue),
+								Type:   routev1.RouteAdmitted,
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Status().Update(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			objRouteBar.Status = routev1.RouteStatus{
+				Ingress: []routev1.RouteIngress{
+					{
+						RouterName: RouterName,
+						Conditions: []routev1.RouteIngressCondition{
+							{
+								Status: v12.ConditionStatus(v1.ConditionTrue),
+								Type:   routev1.RouteAdmitted,
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Status().Update(context.Background(), &objRouteBar)
+			Expect(err).To(BeNil())
+
+			rObjFoo := routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
+			Expect(err).To(BeNil())
+
+			rObjBar := routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteBarName}, &rObjBar)
+			Expect(err).To(BeNil())
+
+			time.Sleep(1 * time.Second)
+			httpProxyList := contourv1.HTTPProxyList{}
+			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
+			Expect(err).To(BeNil())
+			Expect(len(httpProxyList.Items)).To(Equal(1))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooFQDN))
+
+			// keep track of the HTTPProxy object
+			oldHTTPProxyName := httpProxyList.Items[0].Name
+
+			rObjFoo = routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
+			Expect(err).To(BeNil())
+			rObjFoo.Spec.Host = RouteFooNewFQDN
+			err = k8sClient.Update(context.Background(), &rObjFoo)
+			Expect(err).To(BeNil())
+			rObjFoo = routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
+			Expect(err).To(BeNil())
+			rObjFoo.Status = routev1.RouteStatus{
+				Ingress: []routev1.RouteIngress{
+					{
+						RouterName: RouterName,
+						Conditions: []routev1.RouteIngressCondition{
+							{
+								Status: v12.ConditionStatus(v1.ConditionTrue),
+								Type:   routev1.RouteAdmitted,
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Status().Update(context.Background(), &rObjFoo)
+			Expect(err).To(BeNil())
+
+			// wait for new HTTPProxy creation, and reconciliation of old one
+			time.Sleep(2 * time.Second)
+
+			httpProxyList = contourv1.HTTPProxyList{}
+			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
+			Expect(err).To(BeNil())
+			Expect(len(httpProxyList.Items)).To(Equal(2))
+			for _, httpProxyObj := range httpProxyList.Items {
+				if httpProxyObj.Name == oldHTTPProxyName {
+					Expect(httpProxyObj.Spec.VirtualHost.Fqdn).To(Equal(RouteBarFQDN))
+					Expect(len(httpProxyObj.ObjectMeta.OwnerReferences)).To(Equal(1))
+					Expect(httpProxyObj.ObjectMeta.OwnerReferences[0].Name).To(Equal(RouteBarName))
+				} else {
+					Expect(httpProxyObj.Spec.VirtualHost.Fqdn).To(Equal(RouteFooNewFQDN))
+				}
+			}
+
+			err = k8sClient.Delete(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			err = k8sClient.Delete(context.Background(), &objRouteBar)
+			Expect(err).To(BeNil())
 		})
 
 		It("To enable Debug mode", func() {
