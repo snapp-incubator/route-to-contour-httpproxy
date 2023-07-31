@@ -37,7 +37,10 @@ const (
 
 	ServiceFooName             = "foo"
 	RouteFooName               = "foo"
+	RouteBarName               = "bar"
 	RouteFooFQDN               = "test.apps.example.com"
+	RouteBarFQDN               = "test.apps.example.com"
+	RouteBarPath               = "/bar"
 	RouteFooWildCardPolicyType = "None"
 
 	RateLimitRequests = 100
@@ -594,6 +597,123 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 
 			err = k8sClient.Delete(context.Background(), &objRoute)
 			Expect(err).To(BeNil())
+		})
+
+		It("should create one HTTPProxy object when multiple routes with different hosts exist", func() {
+			objRouteFoo := routev1.Route{
+				TypeMeta: RouterTypeMeta,
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: DefaultNamespace,
+					Name:      RouteFooName,
+					Labels: map[string]string{
+						consts.RouteShardLabel: RouterName,
+					},
+					Annotations: map[string]string{
+						consts.AnnotTimeout: RouteTimeout,
+					},
+				},
+				Spec: routev1.RouteSpec{
+					Host: RouteFooFQDN,
+					Port: &routev1.RoutePort{
+						TargetPort: intstr.IntOrString{IntVal: 443},
+					},
+					To: routev1.RouteTargetReference{
+						Name:   ServiceFooName,
+						Kind:   KindService,
+						Weight: &ServiceWeight,
+					},
+					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+				},
+			}
+			err = k8sClient.Create(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			objRouteBar := routev1.Route{
+				TypeMeta: RouterTypeMeta,
+				ObjectMeta: v1.ObjectMeta{
+					Namespace: DefaultNamespace,
+					Name:      RouteBarName,
+					Labels: map[string]string{
+						consts.RouteShardLabel: RouterName,
+					},
+					Annotations: map[string]string{
+						consts.AnnotTimeout: RouteTimeout,
+					},
+				},
+				Spec: routev1.RouteSpec{
+					Host: RouteBarFQDN,
+					Path: RouteBarPath,
+					Port: &routev1.RoutePort{
+						TargetPort: intstr.IntOrString{IntVal: 443},
+					},
+					To: routev1.RouteTargetReference{
+						Name:   ServiceFooName,
+						Kind:   KindService,
+						Weight: &ServiceWeight,
+					},
+					WildcardPolicy: routev1.WildcardPolicyType(RouteFooWildCardPolicyType),
+				},
+			}
+			err = k8sClient.Create(context.Background(), &objRouteBar)
+			Expect(err).To(BeNil())
+
+			objRouteFoo.Status = routev1.RouteStatus{
+				Ingress: []routev1.RouteIngress{
+					{
+						RouterName: RouterName,
+						Conditions: []routev1.RouteIngressCondition{
+							{
+								Status: v12.ConditionStatus(v1.ConditionTrue),
+								Type:   routev1.RouteAdmitted,
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Status().Update(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			objRouteBar.Status = routev1.RouteStatus{
+				Ingress: []routev1.RouteIngress{
+					{
+						RouterName: RouterName,
+						Conditions: []routev1.RouteIngressCondition{
+							{
+								Status: v12.ConditionStatus(v1.ConditionTrue),
+								Type:   routev1.RouteAdmitted,
+							},
+						},
+					},
+				},
+			}
+			err = k8sClient.Status().Update(context.Background(), &objRouteBar)
+			Expect(err).To(BeNil())
+
+			rObjFoo := routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjFoo)
+			Expect(err).To(BeNil())
+
+			rObjBar := routev1.Route{}
+			err = k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: RouteFooName}, &rObjBar)
+			Expect(err).To(BeNil())
+
+			time.Sleep(1 * time.Second)
+			httpProxyList := contourv1.HTTPProxyList{}
+			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
+			Expect(err).To(BeNil())
+			Expect(len(httpProxyList.Items)).To(Equal(1))
+			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(RouteFooFQDN))
+
+			err = k8sClient.Delete(context.Background(), &objRouteFoo)
+			Expect(err).To(BeNil())
+
+			err = k8sClient.Delete(context.Background(), &objRouteBar)
+			Expect(err).To(BeNil())
+
+			httpProxyList = contourv1.HTTPProxyList{}
+			err = k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))
+			Expect(err).To(BeNil())
+			Expect(len(httpProxyList.Items)).To(Equal(1))
 		})
 
 		It("To enable Debug mode", func() {
