@@ -1,6 +1,13 @@
 package controller
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/utils"
@@ -12,18 +19,10 @@ import (
 	v12 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"context"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"fmt"
 )
 
 const (
@@ -244,7 +243,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -304,7 +303,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -360,7 +359,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -415,7 +414,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -481,7 +480,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(BeNil())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -536,7 +535,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -635,7 +634,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			fetchSecondRouteFromCluster := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: SecondRouteName}, &fetchSecondRouteFromCluster)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -694,7 +693,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			fetchFirstRouteFromCluster := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &fetchFirstRouteFromCluster)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -789,7 +788,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 				},
 			}
 			// sleep so we can make sure that first route is the older route
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			Expect(k8sClient.Create(context.Background(), &secondRouteObj)).To(Succeed())
 
 			firstRouteObj.Status = routev1.RouteStatus{
@@ -828,7 +827,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			fetchSecondRouteFromCluster := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: SecondRouteName}, &fetchSecondRouteFromCluster)).To(Succeed())
 
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 			httpProxyList := contourv1.HTTPProxyList{}
 			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 			Expect(len(httpProxyList.Items)).To(Equal(1))
@@ -876,10 +875,6 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 
 			Expect(k8sClient.Delete(context.Background(), &firstRouteObj)).To(Succeed())
 			Expect(k8sClient.Delete(context.Background(), &secondRouteObj)).To(Succeed())
-		})
-
-		It("To enable Debug mode", func() {
-			Expect("foo").To(Equal("foo"))
 		})
 	})
 })
