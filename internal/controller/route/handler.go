@@ -359,8 +359,8 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 		httpproxy.Spec.TCPProxy = &contourv1.TCPProxy{}
 		for _, sameRoute := range sameHostRoutes {
 			ports, err := r.getTargetPorts(ctx, &sameRoute)
-			// Ignore the route if it's not valid.
-			// This is done so that the httpproxy can be reconciled if n out m routes with same fqdn are valid (n < m)
+			// Continue if unable to fetch TargetPorts of the route.
+			// This is done so that the httpproxy can be reconciled if there are other valid routes with the same FQDN.
 			if err != nil {
 				r.logger.Error(err, "failed to get route target ports")
 				continue
