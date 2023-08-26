@@ -359,8 +359,11 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 		httpproxy.Spec.TCPProxy = &contourv1.TCPProxy{}
 		for _, sameRoute := range sameHostRoutes {
 			ports, err := r.getTargetPorts(ctx, &sameRoute)
+			// Continue if unable to fetch TargetPorts of the route.
+			// This is done so that the httpproxy can be reconciled if there are other valid routes with the same FQDN.
 			if err != nil {
-				return nil, fmt.Errorf("failed to get route target port, %v", err)
+				r.logger.Error(err, "failed to get route target ports")
+				continue
 			}
 
 			for _, port := range ports {
@@ -372,6 +375,9 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 				httpproxy.Spec.TCPProxy.Services = append(httpproxy.Spec.TCPProxy.Services, svc)
 			}
 		}
+		if len(httpproxy.Spec.TCPProxy.Services) == 0 {
+			return nil, fmt.Errorf("no valid routes found")
+		}
 	} else {
 		for _, sameRoute := range sameHostRoutes {
 			loadBalancerPolicy, err := utils.GetLoadBalancerPolicy(&sameRoute)
@@ -381,7 +387,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 
 			ports, err := r.getTargetPorts(ctx, &sameRoute)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get route target port, %v", err)
+				r.logger.Error(err, "failed to get route target ports")
 			}
 
 			for _, port := range ports {
@@ -435,6 +441,9 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 
 				httpproxy.Spec.Routes = append(httpproxy.Spec.Routes, httpproxyRoute)
 			}
+		}
+		if len(httpproxy.Spec.Routes) == 0 {
+			return nil, fmt.Errorf("no valid routes found")
 		}
 	}
 
