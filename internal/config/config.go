@@ -27,7 +27,7 @@ type Config struct {
 var (
 	defaultConfig = Config{
 		RouterToContourRatio: 1,
-		CommonHostSuffix:     "okd4.ts-1.staging-snappcloud.io",
+		CommonHostSuffix:     ".okd4.ts-1.staging-snappcloud.io",
 		DefaultTimeout: DefaultTimeout{
 			PublicClass:  "5s",
 			InterDcClass: "5s",

@@ -1,5 +1,5 @@
 routeToContourRatio: 1
-commonHostSuffix: okd4.ts-1.staging-snappcloud.io
+commonHostSuffix: .okd4.ts-1.staging-snappcloud.io
 defaultTimeout:
   publicClass: 5s
   interDcClass: 5s
