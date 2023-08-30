@@ -1,0 +1,34 @@
+controllerManager:
+  manager:
+    args:
+    - --leader-elect
+    - --config=/route-to-contour-httpproxy/config/config.yaml
+    image:
+      repository: ghcr.io/snapp-incubator/route-to-contour-httpproxy
+      tag: latest
+    resources:
+      limits:
+        cpu: "1"
+        memory: 2Gi
+      requests:
+        cpu: "1"
+        memory: 2Gi
+  replicas: 1
+  serviceAccount:
+    annotations: {}
+controllerManagerConfig:
+  configYaml: |-
+    routeToContourRatio: 1
+    commonHostSuffix: .okd4.ts-1.staging-snappcloud.io
+    defaultTimeout:
+      publicClass: 5s
+      interDcClass: 5s
+      defaultClass: 30s
+kubernetesClusterDomain: cluster.local
+metricsService:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: https
+  type: ClusterIP
