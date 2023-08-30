@@ -38,7 +38,6 @@ const (
 	StrategyRequestHash          = "RequestHash"
 	StrategyDefault              = StrategyWeightedLeastRequest
 
-	HTTPProxyGenerateName = "managed-httpproxy-"
 	TLSSecretGenerateName = "managed-tls-secret-"
 
 	NotFoundError = CustomError("not found")

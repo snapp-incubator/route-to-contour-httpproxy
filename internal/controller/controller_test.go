@@ -17,13 +17,13 @@ import (
 	v12 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
-	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
-	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/utils"
-
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/consts"
+	"github.com/snapp-incubator/route-to-contour-httpproxy/pkg/utils"
 )
 
 const (
@@ -177,17 +177,18 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
-			Expect(httpProxyList.Items[0].Spec.Routes[0].TimeoutPolicy.Response).To(Equal(RouteTimeout))
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
+				g.Expect(httpProxyList.Items[0].Spec.Routes[0].TimeoutPolicy.Response).To(Equal(RouteTimeout))
+			}).Should(Succeed())
 
 			cleanUpRoute(objRoute)
 		})
 
-		It("should create HTTPProxy object with custom load balancer algorithm (note: this case only tests the algorithm)", func() {
+		It("should create HTTPProxy object with custom load balancer algorithm (only tests the algorithm)", func() {
 			objRoute := getSampleRoute()
 			objRoute.Annotations = map[string]string{
 				consts.AnnotBalance:        "roundrobin",
@@ -200,16 +201,17 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.Routes[0].LoadBalancerPolicy.Strategy).To(Equal(consts.StrategyRoundRobin))
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.Routes[0].LoadBalancerPolicy.Strategy).To(Equal(consts.StrategyRoundRobin))
+			}).Should(Succeed())
 
 			cleanUpRoute(objRoute)
 		})
 
-		It("should create HTTPProxy object with rate limit enabled (note: this case only tests the rate limit)", func() {
+		It("should create HTTPProxy object with rate limit enabled (only tests the rate limit)", func() {
 			objRoute := getSampleRoute()
 			objRoute.Annotations = map[string]string{
 				consts.AnnotTimeout:           RouteTimeout,
@@ -223,16 +225,19 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.Routes[0].RateLimitPolicy.Local.Requests).To(Equal(utils.CalculateRateLimit(cfg.RouterToContourRatio, RateLimitRequests)))
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.Routes[0].RateLimitPolicy).NotTo(BeNil())
+				g.Expect(httpProxyList.Items[0].Spec.Routes[0].RateLimitPolicy.Local).NotTo(BeNil())
+				g.Expect(httpProxyList.Items[0].Spec.Routes[0].RateLimitPolicy.Local.Requests).To(Equal(utils.CalculateRateLimit(cfg.RouterToContourRatio, RateLimitRequests)))
+			}).Should(Succeed())
 
 			cleanUpRoute(objRoute)
 		})
 
-		It("should create HTTPProxy object with ip whitelist enabled (note: this case only tests the whitelist)", func() {
+		It("should create HTTPProxy object with ip whitelist enabled (only tests the whitelist)", func() {
 			objRoute := getSampleRoute()
 			objRoute.Annotations = map[string]string{
 				consts.AnnotTimeout:     RouteTimeout,
@@ -245,28 +250,29 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.Routes[0].IPAllowFilterPolicy).NotTo(BeNil())
-			for _, ipWhiteList := range strings.Split(RouteIPWhiteList, " ") {
-				found := false
-				for _, ipFilterPolicy := range httpProxyList.Items[0].Spec.Routes[0].IPAllowFilterPolicy {
-					if ipFilterPolicy.CIDR == ipWhiteList {
-						found = true
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.Routes[0].IPAllowFilterPolicy).NotTo(BeNil())
+				for _, ipWhiteList := range strings.Split(RouteIPWhiteList, " ") {
+					found := false
+					for _, ipFilterPolicy := range httpProxyList.Items[0].Spec.Routes[0].IPAllowFilterPolicy {
+						if ipFilterPolicy.CIDR == ipWhiteList {
+							found = true
+						}
+						if found {
+							break
+						}
 					}
-					if found {
-						break
-					}
+					g.Expect(found).To(BeTrue())
 				}
-				Expect(found).To(BeTrue())
-			}
+			}).Should(Succeed())
 
 			cleanUpRoute(objRoute)
 		})
 
-		It("should create HTTPProxy with TCPProxy when tls is pass through (note: this case only test services on TCPProxy", func() {
+		It("should create HTTPProxy with TCPProxy when tls is pass through (only test services on TCPProxy", func() {
 			objRoute := getSampleRoute()
 			objRoute.Spec.TLS = &routev1.TLSConfig{
 				Termination: routev1.TLSTerminationPassthrough,
@@ -278,17 +284,19 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(BeNil())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(len(httpProxyList.Items[0].Spec.TCPProxy.Services)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.TCPProxy.Services[0].Name).To(Equal(FirstServiceName))
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.TCPProxy).NotTo(BeNil())
+				g.Expect(len(httpProxyList.Items[0].Spec.TCPProxy.Services)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.TCPProxy.Services[0].Name).To(Equal(FirstServiceName))
+			}).Should(Succeed())
 
 			cleanUpRoute(objRoute)
 		})
 
-		It("should create HTTPProxy with TCPProxy when tls is edge (note: this case only tests tls related configs", func() {
+		It("should create HTTPProxy with TCPProxy when tls is edge (only tests tls related configs", func() {
 			objRoute := getSampleRoute()
 			objRoute.Spec.TLS = &routev1.TLSConfig{
 				Termination: routev1.TLSTerminationEdge,
@@ -300,11 +308,12 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			rObj := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, &rObj)).To(Succeed())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.TLS.SecretName).To(Equal(consts.GlobalTLSSecretName))
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.VirtualHost.TLS.SecretName).To(Equal(consts.GlobalTLSSecretName))
+			}).Should(Succeed())
 
 			cleanUpRoute(objRoute)
 		})
@@ -335,11 +344,12 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			fetchSecondRouteFromCluster := routev1.Route{}
 			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: SecondRouteName}, &fetchSecondRouteFromCluster)).To(Succeed())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
+			}).Should(Succeed())
 
 			cleanUpRoute(route1)
 			cleanUpRoute(route2)
@@ -354,27 +364,28 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 
 			admitRoute(route)
 
-			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, route)).To(Succeed())
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
+			}).Should(Succeed())
 
-			time.Sleep(2 * time.Second)
-			httpProxyList := contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteFQDN))
-
-			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, route)).To(Succeed())
-			route.Spec.Host = FirstRouteUpdatedFQDN
-			Expect(k8sClient.Update(context.Background(), route)).To(Succeed())
-			Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, route)).To(Succeed())
+			// Update the host
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: DefaultNamespace, Name: FirstRouteName}, route)).To(Succeed())
+				route.Spec.Host = FirstRouteUpdatedFQDN
+				g.Expect(k8sClient.Update(context.Background(), route)).To(Succeed())
+			}).Should(Succeed())
 			admitRoute(route)
 
 			// wait for new HTTPProxy creation, and deletion of old one
-			time.Sleep(2 * time.Second)
-
-			httpProxyList = contourv1.HTTPProxyList{}
-			Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
-			Expect(len(httpProxyList.Items)).To(Equal(1))
-			Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteUpdatedFQDN))
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.VirtualHost.Fqdn).To(Equal(FirstRouteUpdatedFQDN))
+			}).Should(Succeed())
 
 			cleanUpRoute(route)
 		})
@@ -393,8 +404,6 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			route2.Name = SecondRouteName
 			route2.Spec.Host = SecondRouteFQDN
 			route2.Spec.Path = SecondRoutePath
-			// sleep so we can make sure that first route is the older route
-			time.Sleep(2 * time.Second)
 			Expect(k8sClient.Create(context.Background(), route2)).To(Succeed())
 
 			admitRoute(route1)
