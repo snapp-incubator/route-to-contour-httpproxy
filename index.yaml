@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  route-to-contour-httpproxy:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2023-09-05T07:19:27.058695798Z"
+    description: A Helm chart for Kubernetes
+    digest: 15aff25445ade0cc87d018d695b80dbc59b3b251af6afd3f7a770c78e477da3c
+    name: route-to-contour-httpproxy
+    type: application
+    urls:
+    - https://github.com/snapp-incubator/route-to-contour-httpproxy/releases/download/route-to-contour-httpproxy-0.1.0/route-to-contour-httpproxy-0.1.0.tgz
+    version: 0.1.0
+generated: "2023-09-05T07:19:27.058705198Z"
