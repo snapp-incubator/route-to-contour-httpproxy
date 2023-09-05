@@ -25,7 +25,7 @@ controllerManagerConfig:
       interDcClass: 5s
       defaultClass: 30s
 kubernetesClusterDomain: cluster.local
-metricsService:
+managerMetricsService:
   ports:
   - name: https
     port: 8443
