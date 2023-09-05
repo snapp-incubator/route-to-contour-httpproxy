@@ -17,12 +17,17 @@ type Config struct {
 	// The ratio of the count of router nodes to the count of contour nodes
 	RouterToContourRatio int `koanf:"routeToContourRatio"`
 
+	// When using the host of a route as the name of the httproxy,
+	// CommonHostSuffix will be removed from its end if present
+	CommonHostSuffix string `koanf:"commonHostSuffix"`
+
 	DefaultTimeout DefaultTimeout `koanf:"defaultTimeout"`
 }
 
 var (
 	defaultConfig = Config{
 		RouterToContourRatio: 1,
+		CommonHostSuffix:     ".okd4.ts-1.staging-snappcloud.io",
 		DefaultTimeout: DefaultTimeout{
 			PublicClass:  "5s",
 			InterDcClass: "5s",

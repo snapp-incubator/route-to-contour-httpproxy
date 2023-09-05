@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "route-to-contour-httpproxy.fullname" . }}-controller-manager-config
+  labels:
+  {{- include "route-to-contour-httpproxy.labels" . | nindent 4 }}
+data:
+  config.yaml: {{ .Values.controllerManagerConfig.configYaml | toYaml | indent 1
+    }}

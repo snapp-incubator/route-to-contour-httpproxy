@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/opdev/subreconciler"
@@ -31,7 +32,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -112,7 +112,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			r.findHTTPProxybyOwner,
 			r.handleHostMismatch,
 			r.handleRoute,
-			r.waitForHttpproxy,
 			r.addRouteFinalizer,
 		)
 	}
@@ -125,34 +124,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return subreconciler.Evaluate(subreconciler.DoNotRequeue())
 }
 
-// findHTTPProxybyOwner is a wrapper around getHTTPProxybyOwner to be used as a subreconciler.Fn
 func (r *Reconciler) findHTTPProxybyOwner(ctx context.Context) (*ctrl.Result, error) {
-	httpproxy, err := r.getHTTPProxyByOwner(ctx)
-	switch {
-	case err == nil:
-		r.httpproxy = httpproxy
-		return subreconciler.ContinueReconciling()
-	case err == consts.NotFoundError:
-		return subreconciler.ContinueReconciling()
-	default:
-		return subreconciler.RequeueWithError(err)
-	}
-}
-
-func (r *Reconciler) getHTTPProxyByOwner(ctx context.Context) (*contourv1.HTTPProxy, error) {
 	httpproxyList := contourv1.HTTPProxyList{}
 	if err := r.List(ctx, &httpproxyList, client.InNamespace(r.route.Namespace)); err != nil {
-		return nil, fmt.Errorf("failed to list httpproxies: %w", err)
+		return subreconciler.RequeueWithError(err)
 	}
 
 	for _, httpproxy := range httpproxyList.Items {
 		for _, ownerRef := range httpproxy.GetOwnerReferences() {
 			if ownerRef.UID == r.route.UID {
-				return &httpproxy, nil
+				r.httpproxy = &httpproxy
+				return subreconciler.ContinueReconciling()
 			}
 		}
 	}
-	return nil, consts.NotFoundError
+
+	return subreconciler.ContinueReconciling()
 }
 
 func (r *Reconciler) handleRouteCleanup(ctx context.Context) (*ctrl.Result, error) {
@@ -266,27 +253,6 @@ func (r *Reconciler) handleRoute(ctx context.Context) (*ctrl.Result, error) {
 	}
 }
 
-// waitForHttpproxy retries getting the httpproxy owned by the current route.
-// This wait is necessary to due to possible lag between object creation and its
-// appearance in controller-runtime's cache
-func (r *Reconciler) waitForHttpproxy(ctx context.Context) (*ctrl.Result, error) {
-	err := retry.OnError(
-		retry.DefaultBackoff,
-		func(err error) bool {
-			return err != nil
-		},
-		func() error {
-			_, err := r.getHTTPProxyByOwner(ctx)
-			return err
-		},
-	)
-
-	if err != nil {
-		return subreconciler.RequeueWithError(fmt.Errorf("failed to wait for httpproxy, %v", err))
-	}
-	return subreconciler.ContinueReconciling()
-}
-
 func (r *Reconciler) addRouteFinalizer(ctx context.Context) (*ctrl.Result, error) {
 	updated := controllerutil.AddFinalizer(r.route, utils.RouteFinalizer)
 	if !updated {
@@ -312,8 +278,8 @@ func (r *Reconciler) removeRouteFinalizer(ctx context.Context) (*ctrl.Result, er
 func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route, sameHostRoutes []routev1.Route) (*contourv1.HTTPProxy, error) {
 	httpproxy := &contourv1.HTTPProxy{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: consts.HTTPProxyGenerateName,
-			Namespace:    owner.Namespace,
+			Name:      strings.TrimSuffix(owner.Spec.Host, r.cfg.CommonHostSuffix),
+			Namespace: owner.Namespace,
 		},
 		Spec: contourv1.HTTPProxySpec{
 			VirtualHost: &contourv1.VirtualHost{

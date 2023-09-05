@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "route-to-contour-httpproxy.fullname" . }}-controller-manager
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: route-to-contour-httpproxy
+    app.kubernetes.io/part-of: route-to-contour-httpproxy
+    control-plane: controller-manager
+  {{- include "route-to-contour-httpproxy.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controllerManager.replicas }}
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+    {{- include "route-to-contour-httpproxy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+      {{- include "route-to-contour-httpproxy.selectorLabels" . | nindent 8 }}
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+    spec:
+      containers:
+      - args: {{- toYaml .Values.controllerManager.manager.args | nindent 8 }}
+        command:
+        - /manager
+        env:
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag
+          | default .Chart.AppVersion }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources: {{- toYaml .Values.controllerManager.manager.resources | nindent 10
+          }}
+        volumeMounts:
+        - mountPath: /route-to-contour-httpproxy/config/
+          name: config-volume
+      serviceAccountName: {{ include "route-to-contour-httpproxy.fullname" . }}-controller-manager
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - configMap:
+          items:
+          - key: config.yaml
+            path: config.yaml
+          name: {{ include "route-to-contour-httpproxy.fullname" . }}-controller-manager-config
+        name: config-volume

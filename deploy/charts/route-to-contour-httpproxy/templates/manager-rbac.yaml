@@ -1,0 +1,83 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "route-to-contour-httpproxy.fullname" . }}-manager-role
+  labels:
+  {{- include "route-to-contour-httpproxy.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - projectcontour.io
+  resources:
+  - httpproxies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - route.openshift.io
+  resources:
+  - routes/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "route-to-contour-httpproxy.fullname" . }}-manager-rolebinding
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: route-to-contour-httpproxy
+    app.kubernetes.io/part-of: route-to-contour-httpproxy
+  {{- include "route-to-contour-httpproxy.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: '{{ include "route-to-contour-httpproxy.fullname" . }}-manager-role'
+subjects:
+- kind: ServiceAccount
+  name: '{{ include "route-to-contour-httpproxy.fullname" . }}-controller-manager'
+  namespace: '{{ .Release.Namespace }}'
