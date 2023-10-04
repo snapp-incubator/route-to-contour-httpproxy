@@ -290,6 +290,10 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 
 	httpproxy.Spec.IngressClassName = utils.GetIngressClass(owner)
 
+	// Enable h2 and http/1.1 by default.
+	// Later we disable h2 for routes that use the default certificate
+	httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"h2", "http/1.1"}
+
 	if owner.Spec.TLS != nil {
 		switch owner.Spec.TLS.Termination {
 		case routev1.TLSTerminationPassthrough:
@@ -310,6 +314,8 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 				secretName = secret.Name
 			} else {
 				secretName = consts.GlobalTLSSecretName
+				// Disable h2 for routes that use the default certificate
+				httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
 			}
 			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
 				SecretName:                secretName,
