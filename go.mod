@@ -1,6 +1,6 @@
 module github.com/snapp-incubator/route-to-contour-httpproxy
 
-go 1.19
+go 1.20
 
 require (
 	github.com/go-logr/logr v1.2.4
@@ -84,4 +84,4 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace github.com/projectcontour/contour => github.com/snapp-incubator/contour v1.2.1-0.20231004141833-da413c880ffe
+replace github.com/projectcontour/contour => github.com/snapp-incubator/contour v1.2.1-0.20231004183642-4ec21344d3ff

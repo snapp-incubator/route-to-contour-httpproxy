@@ -121,8 +121,8 @@ github.com/prometheus/common v0.44.0/go.mod h1:ofAIvZbQ1e/nugmZGz4/qCb9Ap1VoSTIO
 github.com/prometheus/procfs v0.11.1 h1:xRC8Iq1yyca5ypa9n1EZnWZkt7dwcoRPQwX/5gwaUuI=
 github.com/prometheus/procfs v0.11.1/go.mod h1:eesXgaPo1q7lBpVMoMy0ZOFTth9hBn4W/y0/p/ScXhY=
 github.com/rogpeppe/go-internal v1.10.0 h1:TMyTOH3F/DB16zRVcYyreMH6GnZZrwQVAoYjRBZyWFQ=
-github.com/snapp-incubator/contour v1.2.1-0.20231004141833-da413c880ffe h1:M3e44PWXHu9oX86NN+jLiviPKFVzrhvJ67Vt1m7V2f0=
-github.com/snapp-incubator/contour v1.2.1-0.20231004141833-da413c880ffe/go.mod h1:5qOxB95iPpjYsnPl7mJ7PqdcqB0D83GhA/i/N7SvOC4=
+github.com/snapp-incubator/contour v1.2.1-0.20231004183642-4ec21344d3ff h1:htYtlS/Nndz87vFaeWWKhMfM3rP6UZsFRD0ciiJ/1x0=
+github.com/snapp-incubator/contour v1.2.1-0.20231004183642-4ec21344d3ff/go.mod h1:5qOxB95iPpjYsnPl7mJ7PqdcqB0D83GhA/i/N7SvOC4=
 github.com/spf13/pflag v1.0.5 h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=
 github.com/spf13/pflag v1.0.5/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
