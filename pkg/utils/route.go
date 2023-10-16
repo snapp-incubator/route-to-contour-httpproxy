@@ -19,15 +19,15 @@ func IsAdmitted(route *routev1.Route) (admitted, hasAdmissionStatus bool) {
 	if len(route.Status.Ingress) < 1 || len(route.Status.Ingress[0].Conditions) < 1 {
 		return false, false
 	}
-	routerName := "default"
-	routeLabels := route.ObjectMeta.Labels
-	if routeLabels == nil {
-		routeLabels = map[string]string{}
-	}
-	labelRouterName, ok := routeLabels[consts.LabelKeyRouterName]
-	// openshift router replaces `private` with `default` in status
-	if ok && labelRouterName != "private" {
-		routerName = labelRouterName
+	var routerName string
+	// the default ingress controller selects any routes not selected by the other ingress controllers
+	switch route.ObjectMeta.Labels[consts.LabelKeyRouterName] {
+	case consts.IngressClassPublic:
+		routerName = consts.IngressClassPublic
+	case consts.IngressClassInterDc:
+		routerName = consts.IngressClassInterDc
+	default:
+		routerName = "default"
 	}
 
 	for _, ingress := range route.Status.Ingress {
