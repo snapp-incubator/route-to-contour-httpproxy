@@ -103,7 +103,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			route.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
-						RouterName: RouterName,
+						RouterName: route.Labels[consts.RouteShardLabel],
 						Conditions: []routev1.RouteIngressCondition{
 							{
 								Status: v12.ConditionStatus(v1.ConditionTrue),
@@ -318,7 +318,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			cleanUpRoute(objRoute)
 		})
 
-		It("should create one HTTPProxy object when multiple routes with different hosts exist", func() {
+		It("should create one HTTPProxy object when multiple routes when different hosts exist", func() {
 			route1 := getSampleRoute()
 			route1.Annotations = map[string]string{
 				consts.AnnotTimeout: RouteTimeout,
@@ -443,6 +443,48 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 
 			cleanUpRoute(route1)
 			cleanUpRoute(route2)
+		})
+
+		It("Should set http versions to [http/1.1] for non-inter-dc routes that use the default certificate", func() {
+			route := getSampleRoute()
+			route.Spec.TLS = &routev1.TLSConfig{
+				Termination: routev1.TLSTerminationEdge,
+			}
+			Expect(k8sClient.Create(context.Background(), route)).To(Succeed())
+
+			admitRoute(route)
+
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(len(httpProxyList.Items[0].Spec.HttpVersions)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.HttpVersions[0]).To(Equal(contourv1.HttpVersion("http/1.1")))
+			}).Should(Succeed())
+
+			cleanUpRoute(route)
+		})
+
+		It("Should set http versions to [h2, http/1.1] for inter-dc routes that use the default certificate", func() {
+			route := getSampleRoute()
+			route.Spec.TLS = &routev1.TLSConfig{
+				Termination: routev1.TLSTerminationEdge,
+			}
+			route.Labels[consts.RouteShardLabel] = consts.IngressClassInterDc
+			Expect(k8sClient.Create(context.Background(), route)).To(Succeed())
+
+			admitRoute(route)
+
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(len(httpProxyList.Items[0].Spec.HttpVersions)).To(Equal(2))
+				g.Expect(httpProxyList.Items[0].Spec.HttpVersions[0]).To(Equal(contourv1.HttpVersion("h2")))
+				g.Expect(httpProxyList.Items[0].Spec.HttpVersions[1]).To(Equal(contourv1.HttpVersion("http/1.1")))
+			}).Should(Succeed())
+
+			cleanUpRoute(route)
 		})
 	})
 })
