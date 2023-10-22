@@ -291,7 +291,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 	httpproxy.Spec.IngressClassName = utils.GetIngressClass(owner)
 
 	// Enable h2 and http/1.1 by default.
-	// Later we disable h2 for routes that use the default certificate
+	// Later we disable h2 for a specific set of routes
 	httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"h2", "http/1.1"}
 
 	if owner.Spec.TLS != nil {
@@ -303,6 +303,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 		case routev1.TLSTerminationEdge, routev1.TLSTerminationReencrypt:
 			var secretName string
 			if owner.Spec.TLS.Key != "" {
+				// custom tls certificate
 				err := r.ensureTLSSecret(ctx, owner)
 				if err != nil {
 					return nil, fmt.Errorf("failed to ensure tls secret: %w", err)
@@ -313,9 +314,15 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 				}
 				secretName = secret.Name
 			} else {
+				// default tls certificate
 				secretName = consts.GlobalTLSSecretName
-				// Disable h2 for routes that use the default certificate
-				httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
+
+				// Disable h2 for routes that:
+				// - utilize the default certificate
+				// - *and* are not in the inter-dc shard
+				if httpproxy.Spec.IngressClassName != consts.IngressClassInterDc {
+					httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
+				}
 			}
 			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
 				SecretName:                secretName,
