@@ -62,7 +62,7 @@ func GetIPWhitelist(route *routev1.Route) []contourv1.IPFilterPolicy {
 	if !ok {
 		return filterPolicies
 	}
-	whitelistCIDRs := strings.Split(whitelist, " ")
+	whitelistCIDRs := strings.Fields(whitelist)
 	for _, cidr := range whitelistCIDRs {
 		filterPolicies = append(filterPolicies, contourv1.IPFilterPolicy{
 			Source: contourv1.IPFilterSourcePeer,
