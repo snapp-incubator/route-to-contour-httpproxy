@@ -71,6 +71,7 @@ func NewReconciler(mgr manager.Manager, cfg *config.Config) *Reconciler {
 // +kubebuilder:rbac:groups=projectcontour.io,resources=httpproxies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch
+// +kubebuilder:rbac:groups=core,resources=endpoints,verbs=get
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.logger = log.FromContext(ctx)
@@ -313,10 +314,20 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 					return nil, fmt.Errorf("failed to find tls secret: %w", err)
 				}
 				secretName = secret.Name
+				// check if certificate is wildcard to decide the http version(s)
+				wildcardCert, err := utils.IsWildcardCertificate(owner.Spec.TLS.Certificate)
+				if err != nil {
+					return nil, fmt.Errorf("failed to check if certificate is wildcard: %w", err)
+				}
+				// Disable h2 for routes that:
+				// - utilize custom wildcard certificates
+				// - *and* are not in the inter-dc shard
+				if wildcardCert && httpproxy.Spec.IngressClassName != consts.IngressClassInterDc {
+					httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
+				}
 			} else {
 				// default tls certificate
 				secretName = consts.GlobalTLSSecretName
-
 				// Disable h2 for routes that:
 				// - utilize the default certificate
 				// - *and* are not in the inter-dc shard
@@ -367,6 +378,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 			ports, err := r.getTargetPorts(ctx, &sameRoute)
 			if err != nil {
 				r.logger.Error(err, "failed to get route target ports")
+				continue
 			}
 
 			for _, port := range ports {
@@ -432,33 +444,66 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 func (r *Reconciler) getTargetPorts(ctx context.Context, route *routev1.Route) ([]int, error) {
 	var ports []int
 
+	// servicePortName reflects the 'service.spec.ports.name' of the matched port.
+	servicePortName := ""
 	targetPortName := ""
 	targetPort := 0
+
 	if route.Spec.Port != nil {
 		targetPortName = route.Spec.Port.TargetPort.String()
 		targetPort = route.Spec.Port.TargetPort.IntValue()
 	}
 
 	svc := &corev1.Service{}
-
 	if err := r.Get(ctx, types.NamespacedName{Namespace: route.Namespace, Name: route.Spec.To.Name}, svc); err != nil {
-		return ports, fmt.Errorf("failed to get route target service")
+		return ports, fmt.Errorf("failed to get route target service: %s", err.Error())
 	}
 
+	ep := &corev1.Endpoints{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: route.Namespace, Name: route.Spec.To.Name}, ep); err != nil {
+		return ports, fmt.Errorf("failed to get route target endpoint: %s", err.Error())
+	}
+
+	// OpenShift router has two different approaches to handle `route.spec.port.targetPort` based on its type:
+	// If the type is string, it will be looked up as a named port in the target endpoints port list to resolve the target port on pods.
+	// If the type is int, it must be the target port on pods selected by the service that route points to.
+	// However the httpproxy expects the service port not the pods port. to workaround the issue,
+	// we check the target endpoints port list as it covers both `route.spec.port.targetPort` types.
+	// This is handled by checking `targetPortName` against `endpoints.Subsets[i].Ports[j].Name` and `targetPort` against `endpoints.Subsets[i].Ports[j].Port`
+	// If a match (endpoint port) is found, its name will be used to resolve the service port as it matches the 'name' field in the corresponding ServicePort.
+out:
+	for _, subnet := range ep.Subsets {
+		for _, port := range subnet.Ports {
+			if port.Protocol != corev1.ProtocolTCP {
+				continue
+			}
+
+			if port.Name == targetPortName || port.Port == int32(targetPort) {
+				servicePortName = port.Name
+				break out
+			}
+		}
+	}
+
+	// If a match is found, add it to a new array and break out of the loop.
+	// If no match is found, add all of the service TCP ports to the predefined array.
 	for _, port := range svc.Spec.Ports {
 		if port.Protocol != corev1.ProtocolTCP {
 			continue
 		}
-		if port.Name == targetPortName || port.Port == int32(targetPort) {
+
+		if port.Name == servicePortName {
 			ports = []int{int(port.Port)}
 			break
 		}
+
 		ports = append(ports, int(port.Port))
 	}
 
 	if len(ports) == 0 {
 		return ports, fmt.Errorf("no valid tcp ports found on the target service")
 	}
+
 	return ports, nil
 }
 
@@ -538,7 +583,7 @@ func (r *Reconciler) assembleTLSSecret(route *routev1.Route) *corev1.Secret {
 	}
 }
 
-// getSameHostRoutes returns routes with the same host as the given route in the same namespace
+// getSameHostRoutes returns routes with the same host as the given httpproxy fqdn in the same namespace
 // the routes are sorted in ascending order by .metadata.creationTimestamp field
 func (r *Reconciler) getSameHostRoutes(ctx context.Context, namespace, host string) ([]routev1.Route, error) {
 	sameHostRouteList := &routev1.RouteList{}
