@@ -8,6 +8,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - endpoints
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - create
@@ -25,12 +31,6 @@ rules:
   - get
   - list
   - watch
-- apiGroups:
-  - ""
-  resources:
-  - endpoints
-  verbs:
-  - get
 - apiGroups:
   - projectcontour.io
   resources:
