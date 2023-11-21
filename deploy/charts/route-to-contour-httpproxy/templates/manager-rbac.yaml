@@ -23,6 +23,7 @@ rules:
   - endpoints
   verbs:
   - get
+  - list
 - apiGroups:
   - ""
   resources:
