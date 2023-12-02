@@ -19,19 +19,10 @@ func IsAdmitted(route *routev1.Route) (admitted, hasAdmissionStatus bool) {
 	if len(route.Status.Ingress) < 1 || len(route.Status.Ingress[0].Conditions) < 1 {
 		return false, false
 	}
-	var routerName string
-	// the default ingress controller selects any routes not selected by the other ingress controllers
-	switch route.ObjectMeta.Labels[consts.LabelKeyRouterName] {
-	case consts.IngressClassPublic:
-		routerName = consts.IngressClassPublic
-	case consts.IngressClassInterDc:
-		routerName = consts.IngressClassInterDc
-	default:
-		routerName = "default"
-	}
 
+	// the default ingress controller selects all routes
 	for _, ingress := range route.Status.Ingress {
-		if ingress.RouterName == routerName {
+		if ingress.RouterName == "default" {
 			for _, condition := range ingress.Conditions {
 				if condition.Type == routev1.RouteAdmitted {
 					return condition.Status == v1.ConditionTrue, true
