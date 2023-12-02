@@ -177,7 +177,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 			route.Status = routev1.RouteStatus{
 				Ingress: []routev1.RouteIngress{
 					{
-						RouterName: route.Labels[consts.RouteShardLabel],
+						RouterName: "default",
 						Conditions: []routev1.RouteIngressCondition{
 							{
 								Status: v12.ConditionStatus(v1.ConditionTrue),
