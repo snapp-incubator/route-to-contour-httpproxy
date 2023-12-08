@@ -292,7 +292,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 	httpproxy.Spec.IngressClassName = utils.GetIngressClass(owner)
 
 	// Enable h2 and http/1.1 by default.
-	// Later we disable h2 for a specific set of routes
+	// Later we disable h2 for a specific set of routes.
 	httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"h2", "http/1.1"}
 
 	if owner.Spec.TLS != nil {
@@ -342,6 +342,12 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 		default:
 			return nil, fmt.Errorf("invalid termination mode specified on route")
 		}
+	} else {
+		httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
+	}
+
+	if utils.IsHttp1Enforced(r.route) {
+		httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
 	}
 
 	// use `tcpproxy` for passthrough mode and `routes` for other termination modes

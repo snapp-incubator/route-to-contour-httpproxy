@@ -18,6 +18,7 @@ const (
 
 	AnnotationKeyPrefix               = "snappcloud.io/"
 	AnnotationKeyReconciliationPaused = AnnotationKeyPrefix + "paused"
+	AnnotationKeyHttp1Enforced        = AnnotationKeyPrefix + "force-h1"
 
 	TLSSecretNS         = "openshift-ingress"
 	TLSSecretName       = "letsencrypt"

@@ -685,5 +685,49 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 
 			cleanUpRoute(route)
 		})
+
+		It("Should set http versions to [http/1.1] for routes that do not use tls", func() {
+			route := getSampleRoute()
+			route.Spec.TLS = nil
+
+			Expect(k8sClient.Create(context.Background(), route)).To(Succeed())
+
+			admitRoute(route)
+
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(len(httpProxyList.Items[0].Spec.HttpVersions)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.HttpVersions[0]).To(Equal(contourv1.HttpVersion("http/1.1")))
+			}).Should(Succeed())
+
+			cleanUpRoute(route)
+		})
+
+		It("Should set http versions to [http/1.1] for routes that enforce http/1.1", func() {
+			route := getSampleRoute()
+			route.Annotations = map[string]string{
+				consts.AnnotationKeyHttp1Enforced: "",
+			}
+			// Routes labeled as 'inter-dc' will use h2 in addition to http/1.1, independent of the certificate wildcard status.
+			route.Labels[consts.RouteShardLabel] = consts.IngressClassInterDc
+			route.Spec.TLS = &routev1.TLSConfig{
+				Termination: routev1.TLSTerminationEdge,
+			}
+			Expect(k8sClient.Create(context.Background(), route)).To(Succeed())
+
+			admitRoute(route)
+
+			Eventually(func(g Gomega) {
+				httpProxyList := contourv1.HTTPProxyList{}
+				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
+				g.Expect(len(httpProxyList.Items)).To(Equal(1))
+				g.Expect(len(httpProxyList.Items[0].Spec.HttpVersions)).To(Equal(1))
+				g.Expect(httpProxyList.Items[0].Spec.HttpVersions[0]).To(Equal(contourv1.HttpVersion("http/1.1")))
+			}).Should(Succeed())
+
+			cleanUpRoute(route)
+		})
 	})
 })
