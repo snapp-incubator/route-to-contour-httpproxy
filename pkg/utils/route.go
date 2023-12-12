@@ -34,6 +34,28 @@ func IsAdmitted(route *routev1.Route) (admitted, hasAdmissionStatus bool) {
 	return false, false
 }
 
+// IsHttp1Enforced returns true if http/1.1 should be forced into corresponding httpproxy object of the route object
+func IsHttp1Enforced(route *routev1.Route, forcedIngressClasses []string) bool {
+	if forcedIngressClasses != nil {
+		routeIngressClass := GetIngressClass(route)
+
+		for _, forcedIngressClass := range forcedIngressClasses {
+			if routeIngressClass == forcedIngressClass {
+				return true
+			}
+		}
+	}
+
+	annotations := route.GetAnnotations()
+	if annotations != nil {
+		if _, ok := annotations[consts.AnnotationKeyHttp1Enforced]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 func GetIngressClass(route *routev1.Route) string {
 	ingressClass := route.Labels[consts.RouteShardLabel]
 

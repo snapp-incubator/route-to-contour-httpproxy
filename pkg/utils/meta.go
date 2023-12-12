@@ -20,16 +20,6 @@ func IsDeleted(obj metav1.Object) bool {
 	return !obj.GetDeletionTimestamp().IsZero()
 }
 
-// IsHttp1Enforced returns true if the object has the AnnotationKeyHttp1Enforced
-func IsHttp1Enforced(obj metav1.Object) bool {
-	annotations := obj.GetAnnotations()
-	if annotations == nil {
-		return false
-	}
-	_, ok := annotations[consts.AnnotationKeyHttp1Enforced]
-	return ok
-}
-
 // IsPaused returns true if the object has the AnnotationKeyReconciliationPaused
 func IsPaused(obj metav1.Object) bool {
 	annotations := obj.GetAnnotations()

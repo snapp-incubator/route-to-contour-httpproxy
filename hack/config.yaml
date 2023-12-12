@@ -1,5 +1,7 @@
 routeToContourRatio: 1
 commonHostSuffix: .okd4.ts-1.staging-snappcloud.io
+forceH1ForIngressClass:
+- private
 defaultTimeout:
   publicClass: 5s
   interDcClass: 5s

@@ -346,7 +346,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 		httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
 	}
 
-	if utils.IsHttp1Enforced(r.route) {
+	if utils.IsHttp1Enforced(r.route, r.cfg.ForceH1ForIngressClass) {
 		httpproxy.Spec.HttpVersions = []contourv1.HttpVersion{"http/1.1"}
 	}
 

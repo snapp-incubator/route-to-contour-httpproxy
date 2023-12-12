@@ -21,6 +21,9 @@ type Config struct {
 	// CommonHostSuffix will be removed from its end if present
 	CommonHostSuffix string `koanf:"commonHostSuffix"`
 
+	// All httpproxy objects with these ingressClass names will only have http/1.1 set in their httpVersions field.
+	ForceH1ForIngressClass []string `koanf:"forceH1ForIngressClass"`
+
 	DefaultTimeout DefaultTimeout `koanf:"defaultTimeout"`
 }
 
