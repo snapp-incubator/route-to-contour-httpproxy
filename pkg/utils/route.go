@@ -89,7 +89,7 @@ func GetLoadBalancerPolicy(route *routev1.Route) (*contourv1.LoadBalancerPolicy,
 	lbPolicy := contourv1.LoadBalancerPolicy{}
 	disableCookies := route.Annotations[consts.AnnotDisableCookies]
 	if disableCookies != "true" && disableCookies != "TRUE" {
-		lbPolicy.Strategy = consts.StrategyCookie
+		lbPolicy.Strategy = consts.StrategyRoundRobin
 	} else {
 		policy, ok := route.Annotations[consts.AnnotBalance]
 		if !ok {
