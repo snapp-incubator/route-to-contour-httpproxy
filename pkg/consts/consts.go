@@ -14,7 +14,6 @@ const (
 	AnnotBalance           = haproxyAnnotationPrefix + "balance"
 	AnnotTimeout           = haproxyAnnotationPrefix + "timeout"
 	AnnotIPWhitelist       = haproxyAnnotationPrefix + "ip_whitelist"
-	AnnotDisableCookies    = haproxyAnnotationPrefix + "disable_cookies"
 
 	AnnotationKeyPrefix               = "snappcloud.io/"
 	AnnotationKeyReconciliationPaused = AnnotationKeyPrefix + "paused"
@@ -37,7 +36,7 @@ const (
 	StrategyRoundRobin           = "RoundRobin"
 	StrategyWeightedLeastRequest = "WeightedLeastRequest"
 	StrategyRequestHash          = "RequestHash"
-	StrategyDefault              = StrategyWeightedLeastRequest
+	StrategyDefault              = StrategyRoundRobin
 
 	TLSSecretGenerateName = "managed-tls-secret-"
 

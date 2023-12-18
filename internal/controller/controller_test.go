@@ -344,8 +344,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 		It("should create HTTPProxy object with custom load balancer algorithm (only tests the algorithm)", func() {
 			objRoute := getSampleRoute()
 			objRoute.Annotations = map[string]string{
-				consts.AnnotBalance:        "roundrobin",
-				consts.AnnotDisableCookies: "true",
+				consts.AnnotBalance: "cookie",
 			}
 			Expect(k8sClient.Create(context.Background(), objRoute)).To(Succeed())
 
@@ -358,7 +357,7 @@ var _ = Describe("Testing Route to HTTPProxy Controller", func() {
 				httpProxyList := contourv1.HTTPProxyList{}
 				g.Expect(k8sClient.List(context.Background(), &httpProxyList, client.InNamespace(DefaultNamespace))).To(Succeed())
 				g.Expect(len(httpProxyList.Items)).To(Equal(1))
-				g.Expect(httpProxyList.Items[0].Spec.Routes[0].LoadBalancerPolicy.Strategy).To(Equal(consts.StrategyRoundRobin))
+				g.Expect(httpProxyList.Items[0].Spec.Routes[0].LoadBalancerPolicy.Strategy).To(Equal(consts.StrategyCookie))
 			}).Should(Succeed())
 
 			cleanUpRoute(objRoute)
