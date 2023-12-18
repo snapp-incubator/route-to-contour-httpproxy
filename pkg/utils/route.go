@@ -87,27 +87,24 @@ func GetIPWhitelist(route *routev1.Route) []contourv1.IPFilterPolicy {
 
 func GetLoadBalancerPolicy(route *routev1.Route) (*contourv1.LoadBalancerPolicy, error) {
 	lbPolicy := contourv1.LoadBalancerPolicy{}
-	disableCookies := route.Annotations[consts.AnnotDisableCookies]
-	if disableCookies != "true" && disableCookies != "TRUE" {
-		lbPolicy.Strategy = consts.StrategyRoundRobin
+	policy, ok := route.Annotations[consts.AnnotBalance]
+	if !ok {
+		lbPolicy.Strategy = consts.StrategyDefault
 	} else {
-		policy, ok := route.Annotations[consts.AnnotBalance]
-		if !ok {
-			lbPolicy.Strategy = consts.StrategyDefault
-		} else {
-			switch policy {
-			case "roundrobin":
-				lbPolicy.Strategy = consts.StrategyRoundRobin
-			case "leastconn":
-				lbPolicy.Strategy = consts.StrategyWeightedLeastRequest
-			case "source":
-				lbPolicy.Strategy = consts.StrategyRequestHash
-				lbPolicy.RequestHashPolicies = []contourv1.RequestHashPolicy{{HashSourceIP: true}}
-			case "random":
-				lbPolicy.Strategy = consts.StrategyRandom
-			default:
-				return nil, fmt.Errorf("invalid loadbalancer policy specified on route")
-			}
+		switch policy {
+		case "roundrobin":
+			lbPolicy.Strategy = consts.StrategyRoundRobin
+		case "leastconn":
+			lbPolicy.Strategy = consts.StrategyWeightedLeastRequest
+		case "source":
+			lbPolicy.Strategy = consts.StrategyRequestHash
+			lbPolicy.RequestHashPolicies = []contourv1.RequestHashPolicy{{HashSourceIP: true}}
+		case "random":
+			lbPolicy.Strategy = consts.StrategyRandom
+		case "cookie":
+			lbPolicy.Strategy = consts.StrategyCookie
+		default:
+			return nil, fmt.Errorf("invalid loadbalancer policy specified on route")
 		}
 	}
 
