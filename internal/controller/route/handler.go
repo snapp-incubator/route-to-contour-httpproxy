@@ -352,8 +352,9 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 
 	// use `tcpproxy` for passthrough mode and `routes` for other termination modes
 	if owner.Spec.TLS != nil && owner.Spec.TLS.Termination == routev1.TLSTerminationPassthrough {
+		// We don't set IPAllowFilterPolicy as it's not supported in passthrough mode:
+		// https://github.com/projectcontour/contour/issues/2855
 		httpproxy.Spec.TCPProxy = &contourv1.TCPProxy{}
-		var ipWhiteList []contourv1.IPFilterPolicy
 		for _, sameRoute := range sameHostRoutes {
 			ports, err := r.getTargetPorts(ctx, &sameRoute)
 			// Continue if unable to fetch TargetPorts of the route.
@@ -361,11 +362,6 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 			if err != nil {
 				r.logger.Error(err, "failed to get route target ports")
 				continue
-			}
-
-			routeIpWhitelist := utils.GetIPWhitelist(&sameRoute)
-			if len(routeIpWhitelist) > 0 {
-				ipWhiteList = append(ipWhiteList, routeIpWhitelist...)
 			}
 
 			for _, port := range ports {
@@ -376,9 +372,6 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 				}
 				httpproxy.Spec.TCPProxy.Services = append(httpproxy.Spec.TCPProxy.Services, svc)
 			}
-		}
-		if len(ipWhiteList) > 0 {
-			httpproxy.Spec.VirtualHost.IPAllowFilterPolicy = ipWhiteList
 		}
 		if len(httpproxy.Spec.TCPProxy.Services) == 0 {
 			return nil, fmt.Errorf("no valid routes found")
