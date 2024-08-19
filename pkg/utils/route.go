@@ -64,8 +64,10 @@ func GetIngressClass(route *routev1.Route) string {
 		return consts.IngressClassPublic
 	case consts.IngressClassInterDc:
 		return consts.IngressClassInterDc
-	default:
+	case consts.IngressClassPrivate:
 		return consts.IngressClassPrivate
+	default:
+		return consts.IngressClassDefault
 	}
 }
 

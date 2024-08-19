@@ -3,6 +3,14 @@ controllerManager:
     args:
     - --leader-elect
     - --config=/route-to-contour-httpproxy/config/config.yaml
+    env:
+      enableFallbackCertificate: "true"
+      ingressClassDefault: private
+      ingressClassInterDc: inter-dc
+      ingressClassPrivate: private
+      ingressClassPublic: public
+      tlsSecretName: letsencrypt
+      tlsSecretNs: openshift-ingress
     image:
       repository: ghcr.io/snapp-incubator/route-to-contour-httpproxy
       tag: latest

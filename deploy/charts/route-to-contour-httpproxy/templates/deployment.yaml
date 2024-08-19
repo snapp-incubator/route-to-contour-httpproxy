@@ -27,6 +27,21 @@ spec:
         command:
         - /manager
         env:
+        - name: INGRESS_CLASS_PRIVATE
+          value: {{ quote .Values.controllerManager.manager.env.ingressClassPrivate }}
+        - name: INGRESS_CLASS_PUBLIC
+          value: {{ quote .Values.controllerManager.manager.env.ingressClassPublic }}
+        - name: INGRESS_CLASS_INTER_DC
+          value: {{ quote .Values.controllerManager.manager.env.ingressClassInterDc }}
+        - name: INGRESS_CLASS_DEFAULT
+          value: {{ quote .Values.controllerManager.manager.env.ingressClassDefault }}
+        - name: TLS_SECRET_NS
+          value: {{ quote .Values.controllerManager.manager.env.tlsSecretNs }}
+        - name: TLS_SECRET_NAME
+          value: {{ quote .Values.controllerManager.manager.env.tlsSecretName }}
+        - name: ENABLE_FALLBACK_CERTIFICATE
+          value: {{ quote .Values.controllerManager.manager.env.enableFallbackCertificate
+            }}
         - name: KUBERNETES_CLUSTER_DOMAIN
           value: {{ quote .Values.kubernetesClusterDomain }}
         image: {{ .Values.controllerManager.manager.image.repository }}:{{ .Values.controllerManager.manager.image.tag

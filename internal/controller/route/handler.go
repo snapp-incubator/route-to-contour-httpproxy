@@ -337,7 +337,7 @@ func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route
 			}
 			httpproxy.Spec.VirtualHost.TLS = &contourv1.TLS{
 				SecretName:                secretName,
-				EnableFallbackCertificate: true,
+				EnableFallbackCertificate: consts.EnableFallbackCertificate,
 			}
 		default:
 			return nil, fmt.Errorf("invalid termination mode specified on route")

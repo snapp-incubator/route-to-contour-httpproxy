@@ -14,4 +14,4 @@ spec:
     control-plane: controller-manager
   {{- include "route-to-contour-httpproxy.selectorLabels" . | nindent 4 }}
   ports:
-	{{- .Values.managerMetricsService.ports | toYaml | nindent 2 -}}
+	{{- .Values.managerMetricsService.ports | toYaml | nindent 2 }}

@@ -71,6 +71,21 @@ spec:
         args:
         - --leader-elect
         - --config=/route-to-contour-httpproxy/config/config.yaml
+        env:
+        - name: INGRESS_CLASS_PRIVATE
+          value: private
+        - name: INGRESS_CLASS_PUBLIC
+          value: public
+        - name: INGRESS_CLASS_INTER_DC
+          value: inter-dc
+        - name: INGRESS_CLASS_DEFAULT
+          value: private
+        - name: TLS_SECRET_NS
+          value: openshift-ingress
+        - name: TLS_SECRET_NAME
+          value: letsencrypt
+        - name: ENABLE_FALLBACK_CERTIFICATE
+          value: "true"
         volumeMounts:
           - mountPath: /route-to-contour-httpproxy/config/
             name: config-volume
