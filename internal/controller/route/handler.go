@@ -277,14 +277,19 @@ func (r *Reconciler) removeRouteFinalizer(ctx context.Context) (*ctrl.Result, er
 }
 
 func (r *Reconciler) assembleHttpproxy(ctx context.Context, owner *routev1.Route, sameHostRoutes []routev1.Route) (*contourv1.HTTPProxy, error) {
+	host := owner.Spec.Host
+	if host == "" {
+		host = owner.Status.Ingress[0].Host
+	}
+
 	httpproxy := &contourv1.HTTPProxy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      strings.TrimSuffix(owner.Spec.Host, r.cfg.CommonHostSuffix),
+			Name:      strings.TrimSuffix(host, r.cfg.CommonHostSuffix),
 			Namespace: owner.Namespace,
 		},
 		Spec: contourv1.HTTPProxySpec{
 			VirtualHost: &contourv1.VirtualHost{
-				Fqdn: owner.Spec.Host,
+				Fqdn: host,
 			},
 		},
 	}
@@ -599,6 +604,15 @@ func (r *Reconciler) getSameHostRoutes(ctx context.Context, namespace, host stri
 		"spec.host": host,
 	}); err != nil {
 		return nil, err
+	}
+
+	if len(sameHostRouteList.Items) == 0 {
+		subdomain, _, _ := strings.Cut(host, ".")
+		if err := r.List(ctx, sameHostRouteList, client.InNamespace(namespace), client.MatchingFields{
+			"spec.subdomain": subdomain,
+		}); err != nil && !errors.IsNotFound(err) {
+			return nil, err
+		}
 	}
 
 	sameHostRoutes := make([]routev1.Route, 0, len(sameHostRouteList.Items))

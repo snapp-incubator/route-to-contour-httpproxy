@@ -41,7 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	//+kubebuilder:scaffold:imports
+	// +kubebuilder:scaffold:imports
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -83,7 +83,7 @@ var _ = BeforeSuite(func() {
 	err = contourv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	//+kubebuilder:scaffold:scheme
+	// +kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
@@ -108,6 +108,18 @@ var _ = BeforeSuite(func() {
 			return []string{r.Spec.Host}
 		}); err != nil {
 		fmt.Println(err, "failed to create index for .spec.host", "controller", "Route")
+		os.Exit(1)
+	}
+
+	if err := k8sManager.GetFieldIndexer().IndexField(
+		context.Background(),
+		&routev1.Route{},
+		"spec.subdomain",
+		func(object client.Object) []string {
+			r := object.(*routev1.Route)
+			return []string{r.Spec.Subdomain}
+		}); err != nil {
+		fmt.Println(err, "failed to create index for .spec.subdomain", "controller", "Route")
 		os.Exit(1)
 	}
 
