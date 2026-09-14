@@ -40,7 +40,7 @@ import (
 
 	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/config"
 	"github.com/snapp-incubator/route-to-contour-httpproxy/internal/controller/route"
-	//+kubebuilder:scaffold:imports
+	// +kubebuilder:scaffold:imports
 )
 
 var (
@@ -53,7 +53,7 @@ func init() {
 
 	utilruntime.Must(routev1.AddToScheme(scheme))
 	utilruntime.Must(contourv1.AddToScheme(scheme))
-	//+kubebuilder:scaffold:scheme
+	// +kubebuilder:scaffold:scheme
 }
 
 func main() {
@@ -124,13 +124,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&routev1.Route{},
+		"spec.subdomain",
+		func(object client.Object) []string {
+			r := object.(*routev1.Route)
+			return []string{r.Spec.Subdomain}
+		}); err != nil {
+		setupLog.Error(err, "failed to create index for .spec.subdomain", "controller", "Route")
+		os.Exit(1)
+	}
+
 	routeReconciler := route.NewReconciler(mgr, cfg)
 
 	if err = routeReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Route")
 		os.Exit(1)
 	}
-	//+kubebuilder:scaffold:builder
+	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
