@@ -1,12 +1,27 @@
-run:
-  skip-dirs:
-    - vendor/
-output:
-  option: value
+version: "2"
 linters:
-  disable-all: true
+  default: none
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
   enable:
     - goimports
-linters-settings:
-  goimports:
-    local-prefixes: github.com/snapp-incubator/route-to-contour-httpproxy
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/snapp-incubator/route-to-contour-httpproxy
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
